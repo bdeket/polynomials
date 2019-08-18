@@ -343,7 +343,7 @@ si+1 = si + P(si)/Ki+1(si)
 
        (loop (+ i 1) S* K*3 tryFixedShifts? v P@s lst+)])))
 
-;(module+ test
+(module+ test
   (define-syntax-rule (show r)
     (let ([R r])
       (printf "------------------\n~a ~a in ~a\n~a\n~a\n\n"
@@ -353,4 +353,4 @@ si+1 = si + P(si)/Ki+1(si)
   (show (JenkinsTraub-flroot (flpoly-from-roots -2.632993161855452 -0.18350341907227397 -0.18350341907227397)))
   (show (JenkinsTraub-flroot (flpoly-from-roots 1.0 2.0 2.0 3.0)))
   (show (JenkinsTraub-flroot (flpoly< -1.00570721742018 5.02282165484018 -10.03422165742 10.02280722 -5.0057 1.0)))
-;)
+)
