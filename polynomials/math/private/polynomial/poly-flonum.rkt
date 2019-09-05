@@ -40,7 +40,8 @@
 (define (flpoly< [a : (U (Vectorof Flonum)(Listof Flonum)Flonum)] . [b : Flonum *]) : flpoly
   (cond
     [(or (vector? a)(list? a))
-     (unless (null? b)(raise-argument-error 'flpoly< "rest arguments empty if first is vector/list" 2 a b))
+     (unless (null? b)
+       (raise-argument-error 'flpoly< "rest arguments empty if first is vector/list" 2 a b))
      (if (vector? a)(flpolyV< a)(flpolyL< a))]
     [else (flpolyV< (list->vector (cons a b)))]))
 
@@ -54,13 +55,17 @@
          (if (fl= ai 0.0) #f i)))
      (define d (if n (- (vector-length v) n 1) -1))
      (if (and n (<= 0 d))
-         (make-flpoly (for/vector : (Vectorof Flonum)([ai ((inst in-vector Flonum) v (- (vector-length v) 1) (- n 1) -1)]) ai) d)
+         (make-flpoly (for/vector : (Vectorof Flonum)
+                        ([ai ((inst in-vector Flonum) v (- (vector-length v) 1) (- n 1) -1)])
+                        ai)
+                      d)
          flpoly-zero)]))
 (define (flpolyL> [a : (Listof Flonum)]) : flpoly (flpolyV> (list->vector a)))
 (define (flpoly> [a : (U (Vectorof Flonum)(Listof Flonum)Flonum)] . [b : Flonum *]) : flpoly
   (cond
     [(or (vector? a)(list? a))
-     (unless (null? b)(raise-argument-error 'flpoly< "rest arguments empty if first is vector/list" 2 a b))
+     (unless (null? b)
+       (raise-argument-error 'flpoly< "rest arguments empty if first is vector/list" 2 a b))
      (if (vector? a)(flpolyV> a)(flpolyL> a))]
     [else (flpolyV> (list->vector (cons a b)))]))
 
@@ -125,6 +130,15 @@
        ([ai ((inst in-vector Flonum) (flpoly-v P) (flpoly-degree P) -1 -1)])
        (+ (* sum z) ai))]))
 
+(: Horner+ flPevaluator)
+(define (Horner+ P t)
+  (let loop ([i : Nonnegative-Integer 0]
+             [x : Flonum 1.0]
+             [ans : (Listof Flonum) '()])
+    (cond
+      [(< (flpoly-degree P) i) (flsum ans)]
+      [else (loop (+ i 1) (* x t) (cons (* x (flpoly-coefficient P i)) ans))])))
+
 
 (define (hornerEFT [P : flpoly] [t : Flonum]) : (Values Flonum flpoly flpoly)
   (define-values (ans pπ pσ)
@@ -166,7 +180,9 @@
 ;basic operations +-*^Scale
 ;------------------------------------
 (define (flpoly+p [P1 : flpoly] [P2 : flpoly]) : flpoly
-  (define v (vector-copy(if (< (flpoly-degree P1)(flpoly-degree P2))(flpoly-v P2)(flpoly-v P1))))
+  (define v (vector-copy(if (< (flpoly-degree P1)(flpoly-degree P2))
+                            (flpoly-v P2)
+                            (flpoly-v P1))))
   (for ([ai (in-vector (flpoly-v P1))]
         [bi (in-vector (flpoly-v P2))]
         [i (in-naturals)])
@@ -189,7 +205,9 @@
 
 (define (flpoly-p [P1 : flpoly] [P2 : flpoly]) : flpoly
   (define d (max (flpoly-degree P1)(flpoly-degree P2)))
-  (define v (vector-copy(if (< (flpoly-degree P1)(flpoly-degree P2))(flpoly-v P2)(flpoly-v P1))))
+  (define v (vector-copy(if (< (flpoly-degree P1)(flpoly-degree P2))
+                            (flpoly-v P2)
+                            (flpoly-v P1))))
   (for ([i (in-range (+ d 1))])
     (vector-set! v i (fl- (flpoly-coefficient P1 i)(flpoly-coefficient P2 i))))
   (flpolyV< v))
@@ -210,7 +228,10 @@
 (define (flpoly*s [P : flpoly] [s : Flonum]) : flpoly
   (cond
     [(= s 0.0)(make-flpoly (vector s) 0)]
-    [else (make-flpoly (for/vector : (Vectorof Flonum) ([ai (in-vector (flpoly-v P))])(fl* ai s)) (flpoly-degree P))]))
+    [else (make-flpoly (for/vector : (Vectorof Flonum)
+                         ([ai (in-vector (flpoly-v P))])
+                         (fl* ai s))
+                       (flpoly-degree P))]))
 (module+ test
   (check-equal? (flpoly*s (flpoly> 4.0 3.0 2.0) 2.0) (flpoly> 8.0 6.0 4.0)))
 
@@ -241,7 +262,9 @@
   (define d (apply + (map flpoly-degree Ps)))
   (define dm (apply max (map flpoly-degree Ps)))
   (define H : (HashTable (Pair Integer Integer) (Listof Flonum)) (make-hash))
-  (define (getcof [Ps : (Listof flpoly)] [n : Positive-Integer] [i : Nonnegative-Integer]) : (Listof Flonum)
+  (define (getcof [Ps : (Listof flpoly)]
+                  [n : Positive-Integer]
+                  [i : Nonnegative-Integer]) : (Listof Flonum)
     (cond
       [(hash-ref H (cons n i) (λ () #f))]
       [else
@@ -289,7 +312,9 @@
   (cond
     [(= n 0) flpoly-one]
     [(= n 1) (flpoly-copy P)]
-    [(let ([n/2 (/ n 2)])(if (integer? n/2) n/2 #f))=>(λ(n/2)(let ([Pi (flpoly-expt P n/2)])(flpoly*p Pi Pi)))]
+    [(let ([n/2 (/ n 2)])(if (integer? n/2) n/2 #f))
+     =>
+     (λ(n/2)(let ([Pi (flpoly-expt P n/2)])(flpoly*p Pi Pi)))]
     [else (flpoly*p P (flpoly-expt P (- n 1)))]))
 (module+ test
   (check-equal? (flpoly-expt (flpoly> 1.0 2.0) 0) flpoly-one)
@@ -405,8 +430,9 @@
        (vector-set! Q k (fl/ (vector-ref R (+ dd k))
                              (flpoly-coefficient /p dd)))
        (for ([j (in-range (+ dd k -1) (- k 1) -1)])
-         (vector-set! R j (fl- (vector-ref R j) (fl* (vector-ref Q k)
-                                                     (flpoly-coefficient /p (- j k)))))))
+         (vector-set! R j (fl- (vector-ref R j)
+                               (fl* (vector-ref Q k)
+                                    (flpoly-coefficient /p (- j k)))))))
      (values (make-flpoly Q dQ)
              (flpolyV< (vector-take R dd)))]))
 (module+ test
@@ -459,9 +485,12 @@
     (check-= R 48 1e-16)))
 
 ;------------------------------------
-;checking how much improvement the compensatedHorner brings
+;checking how much improvement the Horner/Horner+/compensatedHorner brings
+;anecdotal evidence:
+; bigger t (farther from the roots) compensatedHorner wins out
+;smaller t (arround roots) Horner+ is the winner (and on average is more accurate than Horner)
 ;------------------------------------
-#;(module+ test
+(module+ test
   (require math/bigfloat)
   (define (bfHorner [P : flpoly] [t : Flonum])
     (define T (bf t))
@@ -469,10 +498,14 @@
       ([sum : Bigfloat (bf 0.0)])
       ([ai ((inst in-vector Flonum) (flpoly-v P) (flpoly-degree P) -1 -1)])
       (bf+ (bf* sum T) (bf ai))))
-  (define P (flpoly< 1.0 0.0 0.0002 -0.0004 0.0 -1.0))
+  ;(define P (flpoly< 1.0 0.0 0.0002 -0.0004 0.0 -1.0))(define a 0.0)(define b 20.0)
+  (define P (flpoly-from-roots -2.632993161855452 -0.18350341907227397 -0.18350341907227397))(define a -0.183500)(define b -0.183507)
+  
+  (define a->b (/ (- b a) 1000.0))
   (define (mfl1 [t : Flonum]) : Flonum (Horner P t))
   (define (mfl2 [t : Flonum]) : Bigfloat (bfHorner P t))
   (define (mfl3 [t : Flonum]) : Flonum (compensatedHorner P t))
+  (define (mfl4 [t : Flonum]) : Flonum (Horner+ P t))
   (define (errdiff [t : Flonum])
     (bigfloat->flonum
      (bf-
@@ -501,9 +534,9 @@
   (require plot)
   (plot
    (list
-    (function (λ ([T : Real]) (errdiff (fl T))) 0 20)
+    (function (λ ([T : Real]) (errdiff (fl T))) a b)
     (x-axis)))
-  (plot
+  #;(plot
    (list
     (function (λ ([t : Real])
                 (bigfloat->flonum
@@ -511,12 +544,52 @@
                   (bf- (mfl2 (fl t))
                        (bf (mfl3 (fl t)))));error with comp horner
                  ))
-              0 20 #:color 'blue)
+              a b #:color 'blue)
     (function (λ ([t : Real])
                 (bigfloat->flonum
                  (bfabs
                   (bf- (mfl2 (fl t))
                        (bf (mfl1 (fl t)))));error with reg horner
                  ))
-              0 20)
+              a b)
+    (function (λ ([t : Real])
+                (bigfloat->flonum
+                 (bfabs
+                  (bf- (mfl2 (fl t))
+                       (bf (mfl4 (fl t)))));error with horner+
+                 ))
+              a b #:color 'green)
+    (x-axis)))
+  (plot
+   (list
+    (points (for/list : (Listof (List Flonum Flonum))
+              ([t : Flonum (in-range a b a->b)])
+              (list t
+                    (bigfloat->flonum
+                     (bfabs
+                      (bf- (mfl2 (fl t))
+                           (bf (mfl3 (fl t)))));error with comp horner
+                     ))) #:size 1 #:color 'blue)
+    (points (for/list : (Listof (List Flonum Flonum))
+              ([t : Flonum (in-range a b a->b)])
+              (list t
+                    (bigfloat->flonum
+                     (bfabs
+                      (bf- (mfl2 (fl t))
+                           (bf (mfl1 (fl t)))));error with reg horner
+                     ))) #:size 1 #:color 1)
+    (points (for/list : (Listof (List Flonum Flonum))
+              ([t : Flonum (in-range a b a->b)])
+              (list t
+                    (bigfloat->flonum
+                     (bfabs
+                      (bf- (mfl2 (fl t))
+                           (bf (mfl4 (fl t)))));error with horner+
+                     ))) #:size 1 #:color 'green)
     (x-axis))))
+#;(module+ test
+  (require plot)
+  (define P (flpoly-from-roots -2.632993161855452 -0.18350341907227397 -0.18350341907227397))(define a -0.183500)(define b -0.183507)
+  (plot (list (function (λ ([x : Real])(Horner P (fl x))) a b #:color 1)
+              (function (λ ([x : Real])(Horner+ P (fl x))) a b #:color 2)
+              (function (λ ([x : Real])(compensatedHorner P (fl x))) a b #:color 3))))
