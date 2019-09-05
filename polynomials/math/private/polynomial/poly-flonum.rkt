@@ -485,6 +485,15 @@
     (check-= R 48 1e-16)))
 
 ;------------------------------------
+;absolute coefficient
+;------------------------------------
+(define (flpoly->absolute-coefficients [P : flpoly])
+  (make-flpoly (for/vector : (Vectorof Flonum)([v : Flonum(in-vector (flpoly-v P))])(abs v))
+               (flpoly-degree P)))
+(module+ test
+  (check-equal? (flpoly->absolute-coefficients (flpoly> -1.0 2.0 -1.0)) (flpoly> 1.0 2.0 1.0)))
+
+;------------------------------------
 ;checking how much improvement the Horner/Horner+/compensatedHorner brings
 ;anecdotal evidence:
 ; bigger t (farther from the roots) compensatedHorner wins out
