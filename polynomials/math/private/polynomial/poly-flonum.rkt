@@ -499,7 +499,7 @@
 ; bigger t (farther from the roots) compensatedHorner wins out
 ;smaller t (arround roots) Horner+ is the winner (and on average is more accurate than Horner)
 ;------------------------------------
-(module+ test
+#;(module+ test
   (require math/bigfloat)
   (define (bfHorner [P : flpoly] [t : Flonum])
     (define T (bf t))

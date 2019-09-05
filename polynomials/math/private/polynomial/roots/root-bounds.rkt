@@ -43,7 +43,7 @@
     [else 1.0]))
 
 (define (roots-mod-lower-bound [P : flpoly]) : Flonum
-  (define pt (flpolyV< (for/vector : (Vectorof Flonum) ([v (in-vector (flpoly-v P))])(flabs v))))
+  (define pt (flpoly->absolute-coefficients P))
   (vector-set! (flpoly-v pt) 0 (fl* -1.0 (flpoly-coefficient pt 0)))
   (define x0 (flexp (fl/ (fl- (fllog (fl* -1.0 (flpoly-coefficient pt 0)))
                               (fllog (flpoly-coefficient pt (flpoly-degree pt))))
@@ -66,7 +66,7 @@
           (let ([δ (fl/ (compensatedHorner pt x)(compensatedHorner pt* x))])(loop (fl- x δ) δ)))))
   x2)
 (define (roots-mod-upper-bound [P : flpoly]) : Flonum
-  (define pt (flpolyV< (for/vector : (Vectorof Flonum) ([v (in-vector (flpoly-v P))])(- (flabs v)))))
+  (define pt (flpoly->absolute-coefficients P))
   (vector-set! (flpoly-v pt) (flpoly-degree pt) (fl* -1.0 (flpoly-coefficient pt (flpoly-degree pt))))
   (flresult-root
    (Newton-flroot pt
