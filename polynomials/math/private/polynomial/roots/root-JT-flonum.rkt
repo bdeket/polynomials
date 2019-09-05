@@ -99,6 +99,7 @@ si+1 = si + P(si)/Ki+1(si)
                rslt**)])))
 ;(println (list '-> K2 s2 convergence))(newline)
 
+  ;do variable shifts
   (flresult-update-iterations
    (case convergence
      [(no-convergence) rslt2]
@@ -109,7 +110,7 @@ si+1 = si + P(si)/Ki+1(si)
    rslt2))
 
 ;------------------------------------
-;stage 1 0 shifts : generating K-poly's x-scaled around 0
+;stage 1 - 0 shifts : generating K-poly's x-scaled around 0
 ;------------------------------------
 (: zero-shift (->* (Nonnegative-Integer flpoly) (flpoly) flpoly))
 (define (zero-shift iterations P [K (flpoly*s (flpoly-diff P) (/ 1.0 (flpoly-degree P)))]) : flpoly
@@ -134,7 +135,7 @@ si+1 = si + P(si)/Ki+1(si)
       [else (flpoly+ (flpoly*s (flpoly-shift Ki -1) (- (/ p0 k0))) P-)])))
 
 ;------------------------------------
-;stage 2 fixed shifts : generating K-poly's x-scaled around (fixed) s
+;stage 2 - fixed shifts : generating K-poly's x-scaled around (fixed) s
 ;------------------------------------
 (define (fixed-shift [iterations : Nonnegative-Integer]
                      [s : Number]
@@ -231,7 +232,7 @@ si+1 = si + P(si)/Ki+1(si)
            (flpoly*p (flpoly> 1.0 (fl* -1.0 C1)) QP/S)
            (const-flpoly b)))
 ;------------------------------------
-;stage 3 variable shifts : generating K-poly's x-scaled around (variable) s
+;stage 3 - variable shifts : generating K-poly's x-scaled around (variable) s
 ;------------------------------------
 (define (linear-shift [iterations-Lin : Nonnegative-Integer]
                       [s : Number]
@@ -318,9 +319,9 @@ si+1 = si + P(si)/Ki+1(si)
     (define lst+ (cons (list s0 P@s) lst))
     (cond
       [(< iterations-Quad i) (go-for-lin s0 Ki i lst+)]
-      ;if roots are not close try linear shift
-      [(< (* .01 (abs (real-part (car sis))))
-          (abs (- (real-part (car sis))(real-part (cadr sis)))))
+      ;if roots are not close/imag try linear shift
+      [(< (* .01 (abs (real-part s0)))
+          (abs (- (real-part s1)(real-part s0))))
        ;in c impl. they take the diference of the abs values... why?
        (go-for-lin s0 Ki i lst+)]
       [else
