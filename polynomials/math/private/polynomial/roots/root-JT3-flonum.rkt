@@ -1,6 +1,13 @@
 #lang racket/base
 
+#|
+based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe.html
+|#
+
 (require math/flonum)
+
+(module+ test
+  (require rackunit))
 
 (define epsilon10 (* 10 epsilon.0))
 (define epsilon100 (* 100 epsilon.0))
@@ -15,6 +22,9 @@
 (define rf
   (case-lambda [(a)(if (vector? a)a(unbox a))]
                [(a b)(vector-ref a b)]))
+(define mk
+  (case-lambda [() (box 'undefined)]
+               [(n) (make-vector n 0.)]))
 
 (define (isZero v)(= v 0))
 
@@ -77,16 +87,24 @@
 
   (goto00))
 (module+ test
-  (define szr* (box 'undefined))(define szi* (box 'undefined))
-  (define lzr* (box 'undefined))(define lzi* (box 'undefined))
-  (Quad 1 6 3 szr* szi* lzr* lzi*)
-  (list (list (rf szr*)(rf szi*))
-        (list (rf lzr*)(rf lzi*))))
+  (let ()
+    (define szr* (mk))(define szi* (mk))
+    (define lzr* (mk))(define lzi* (mk))
+    (Quad 1 6 3 szr* szi* lzr* lzi*)
+    (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
+                  '(-0.5505102572168219 0 -5.449489742783178 0)
+                  epsilon100))
+  (let ()
+    (define szr* (mk))(define szi* (mk))
+    (define lzr* (mk))(define lzi* (mk))
+    (Quad 1 2 3 szr* szi* lzr* lzi*)
+    (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
+                  '(-1 1.414213562373095 -1 -1.414213562373095)
+                  epsilon100)))
 
 ; Divides p by the quadratic x^2+u*x+v
 ; placing the quotient in q and the remainder in a, b
 (define (QuadraticSyntheticDivision NN u v p q* a* b*)
-(println (list 'QuadraticSyntheticDivision NN u v p q* a* b*))
   (define b (rf p 0))
   (s! q* 0 b)
   (define a (- (rf p 1) (* b u)))
@@ -96,9 +114,20 @@
     (set! b a)
     (set! a (rf q* i)))
   (s! a* a)
-  (s! b* b)
-(println (list '-> 'a (rf a*) 'b (rf b*) 'q (rf q*)))
-  )
+  (s! b* b))
+(module+ test
+  (let ()
+    (define q* (mk 5))(define a* (mk))(define b* (mk))
+    (QuadraticSyntheticDivision 4 2.8 3.5 #(1. 2. 3. 4. 5.) q* a* b*)
+    (check-within q* #(1.0 -0.8 1.74 1.928 0.0) epsilon10)
+    (check-= (rf a*) 1.928 epsilon100)
+    (check-= (rf b*) 1.74 epsilon100))
+  (let ()
+    (define q* (mk 6))(define a* (mk))(define b* (mk))
+    (QuadraticSyntheticDivision 5 3.345 6.482 #(0.428 3.62 2.6e-4 12. 0.005 1.23e-4) q* a* b*)
+    (check-within q* #(0.428 2.18834 -10.0940333 31.5797215085 -40.199644595332494 0.0) epsilon10)
+    (check-= (rf a*) -40.199644595332494 epsilon100)
+    (check-= (rf b*) 31.5797215085 epsilon100)))
 
 ; This routine calculates scalar quantities used to compute the next
 ; K polynomial and new estimates of the quadratic coefficients.
@@ -133,8 +162,45 @@
         (s! a1* (- b (* a (/ d c))))
         (s! a7* (+ (* g d) (* h f) a))])
      dumFlag]))
+(module+ test
+  (let ()
+    (define K #(1. 2. 3. 4. 5.))(define N (- (vector-length K) 1))
+    (define a 2.3)(define b 4.6)(define u 1.8)(define v 9.2)
+    (define a1* (mk))(define a3* (mk))(define a7* (mk))
+    (define c* (mk))(define d* (mk))(define e* (mk))(define f* (mk))(define g* (mk))(define h* (mk))
+    (define qk* (mk (+ N 1)))
+    (define tFlag (calcSC N a b a1* a3* a7* c* d* e* f* g* h* K u v qk*))
+    (check-equal? tFlag 1)
+    (check-within qk* #(1.0 0.2 -6.56 13.968 0.0) epsilon10)
+    (check-within (map rf (list a1* a3* a7* c* d* e* f* g* h*))
+                  '(5.680183276059564 15.679123711340203 -19.519702176403204 13.968 -6.56 0.16466208476517755 -0.46964490263459335 0.2963917525773196 42.32)
+                  epsilon100))
+  (let ()
+    (define K #(1. -10 35. -50. 24.))(define N (- (vector-length K) 1))
+    (define a 2.3)(define b 4.6)(define u -6.)(define v 8.)
+    (define a1* (mk))(define a3* (mk))(define a7* (mk))
+    (define c* (mk))(define d* (mk))(define e* (mk))(define f* (mk))(define g* (mk))(define h* (mk))
+    (define qk* (mk (+ N 1)))
+    (define tFlag (calcSC N a b a1* a3* a7* c* d* e* f* g* h* K u v qk*))
+    (check-equal? tFlag 2)
+    (check-within qk* #(1.0 -4.0 3.0 0.0 0.0) epsilon10)
+    (check-within (map rf (list a1* a3* a7* c* d* e* f* g* h*))
+                  '(-2.3 37.03 23.0 0.0 3.0 0.7666666666666666 0.0 -27.6 36.8)
+                  epsilon100))
+  (let ()
+    (define K #(1. -10 35. -50. 24. 0))(define N (- (vector-length K) 1))
+    (define a 2.3)(define b 4.6)(define u -6.)(define v 8.)
+    (define a1* (mk))(define a3* (mk))(define a7* (mk))
+    (define c* (mk))(define d* (mk))(define e* (mk))(define f* (mk))(define g* (mk))(define h* (mk))
+    (define qk* (mk (+ N 1)))
+    (define tFlag (calcSC N a b a1* a3* a7* c* d* e* f* g* h* K u v qk*))
+    (check-equal? tFlag 3)
+    (check-within qk* #(1.0 -4.0 3.0 0.0 0.0 0.0) epsilon10)
+    (check-within (map rf (list a1* a3* a7* c* d* e* f* g* h*))
+                  '(undefined undefined undefined 0.0 0.0 undefined undefined undefined undefined)
+                  epsilon100)))
 
-;Computes the next K polynomials using the scalars computed in calcSC_ak1
+;Computes the next K polynomials using the scalars computed in calcSC
 (define (nextK N tFlag a b a1 a3* a7* K* qk qp)
   (cond
     [(= tFlag 3)
@@ -157,12 +223,30 @@
         (s! K* 0 0)
         (s! K* 1 (* -1 a7 (rf qp 0)))
         (for ([i (in-range 2 N)])
-          (s! K* (+ (* a3 (rf qk (- i 2))) (* -1 a7 (rf qp (- i 1))) )))])]))
+          (s! K* i (+ (* a3 (rf qk (- i 2))) (* -1 a7 (rf qp (- i 1))))))])]))
+(module+ test
+  (let ()
+    (define K* (vector 1. 2. 3. 4. 5.))(define a3* (box 6.))(define a7* (box 7.))
+    (define N (- (vector-length K*) 1))
+    (nextK N 1 8. 9. 10. a3* a7* K* #(11. 12. 13. 14. 15.) #(16. 17. 18. 19. 20.))
+    (check-within K* #(16.0 5.8 12.7 13.6 5.0) epsilon100)
+    (check-within (map rf (list a3* a7*)) '(.6 .7) epsilon100))
+  (let ()
+    (define K* (vector 1. 2. 3. 4. 5.))(define a3* (box 6.))(define a7* (box 7.))
+    (define N (- (vector-length K*) 1))
+    (nextK N 1 8. 9. 0. a3* a7* K* #(11. 12. 13. 14. 15.) #(16. 17. 18. 19. 20.))
+    (check-within K* #(0 -112.0 -53.0 -54.0 5.0) epsilon100)
+    (check-within (map rf (list a3* a7*)) '(6. 7.) epsilon100))
+  (let ()
+    (define K* (vector 1. 2. 3. 4. 5.))(define a3* (box 6.))(define a7* (box 7.))
+    (define N (- (vector-length K*) 1))
+    (nextK N 3 8. 9. 10. a3* a7* K* #(11. 12. 13. 14. 15.) #(16. 17. 18. 19. 20.))
+    (check-within K* #(0 0 11.0 12.0 5.0) epsilon100)
+    (check-within (map rf (list a3* a7*)) '(6. 7.) epsilon100)))
 
 ; Compute new estimates of the quadratic coefficients
 ; using the scalars computed in calcSC
 (define (newest tFlag uu* vv* a a1 a3 a7 b c d f g h u v K N p)
-;(println (list 'newest tFlag uu* vv* a a1 a3 a7 b c d f g h u v K N p))
   (s! uu* 0)(s! vv* 0)
   (unless (= tFlag 3)
     (define a4 0)(define a5 0)
@@ -182,8 +266,35 @@
     (define c4 (+ (- (+ c2 c3)) c1))
     (define temp (+ (- c4) a5 (* b1 a4)))
     (unless (= temp 0.0)
+      ;!!!it temp ≈ 0.0 these values blow up. Is this a good idea?
       (s! uu* (+ (- (/ (+ (* u (+ c3 c2)) (* v (+ (* b1 a1)(* b2 a7)))) temp)) u))
       (s! vv* (* v (+ 1.0 (/ c4 temp)))))))
+(module+ test
+  ;tflag=3
+  (let ()
+    (define uu* (mk))(define vv* (mk))
+    (newest 3 uu* vv* 1. 2. 3. 4. 5. 6. 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
+    (check-within (map rf (list uu* vv*)) '(0. 0.) epsilon100))
+  ;tflag=2 & temp=0
+  (let ()
+    (define uu* (mk))(define vv* (mk))
+    (newest 2 uu* vv* 1. 2. 3. 4. 5. -0.8908220965637230 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
+    (check-within (map rf (list uu* vv*)) '(0. 0.) epsilon100))
+  ;tflag=2 & temp!=0
+  (let ()
+    (define uu* (mk))(define vv* (mk))
+    (newest 2 uu* vv* 1. 2. 3. 4. 5. 6. 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
+    (check-within (map rf (list uu* vv*)) '(11.239868703446534 12.148466102764804) epsilon100))
+  ;tflag=1 & temp=0
+  (let ()
+    (define uu* (mk))(define vv* (mk))
+    (newest 1 uu* vv* 1. 2. 3. 4. 5. 100.52892561983471 0. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
+    (check-within (map rf (list uu* vv*)) '(0. 0.) epsilon100))
+  ;tflag=1 & temp!=0
+  (let ()
+    (define uu* (mk))(define vv* (mk))
+    (newest 1 uu* vv* 1. 2. 3. 4. 5. 6. 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
+    (check-within (map rf (list uu* vv*)) '(11.047985250849212 12.029700344736144) epsilon100)))
 
 ; Variable - shift H - polynomial iteration for a real zero
 ; sss - starting iterate
@@ -207,7 +318,7 @@
     ;value is less than 20 times this bound
     #:break (and (<= mp (* 20 epsilon.0 (- (* 2 ee) mp)))
                  (s! NZ* 1)(s! szr* s)(s! szi* 0))
-    #:break (>= j 10)
+    #:break (> j 10)
     #:break (and (>= j 2)
                  (<= (abs t) (* 0.001 (abs (- s t)))) (> mp omp)
                  ;A cluster of zeros near the real axis has been encountered;
@@ -232,6 +343,37 @@
     (for ([i (in-range 1 N)])(set! kv (+ (* kv s) (rf K* i))))
     (set! t (if (> (abs kv) (* (abs (rf K* (- N 1))) epsilon10)) (- (/ pv kv)) 0))
     (set! s (+ s t))))
+(module+ test
+  ;break small mp
+  ;break iterrations j (iFlag=0 & NZ=0)
+  (let ()
+    (define iFlag* (mk))(define NZ* (mk))(define szr* (mk))(define szi* (mk))
+    (define sss* (box 1.0))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (define qk* (vector 1. 2. 3. 4. 5.))
+    (RealIT iFlag* NZ* sss* 4 #(1. 2. 3. 4. 5.) 5 qp* szr* szi* K* qk*)
+    (check-within qp* #(1.0 -0.6849750434472566 4.839140897040084 -8.992972540277597 29.145906837051825) epsilon100)
+    (check-within K* #(1.0 1.0919036572997787 1.0019196569203022 3.933013624211993 5.0) epsilon100)
+    (check-within qk* #(1.0 -2.8905094995548675 6.966052236569645 -8.822295643728838 5.0) epsilon100)
+    (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
+                  '(0 0 1 undefined undefined) epsilon100))
+  ;break  cluster of zeros
+  (let ()
+    (define iFlag* (mk))(define NZ* (mk))(define szr* (mk))(define szi* (mk))
+    (define sss* (box 0.287815479557648))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (define qk* (vector 1. 2. 3. 4. 5.))
+    (RealIT iFlag* NZ* sss* 4 #(1. 2. 3. 4. 5.) 5 qp* szr* szi* K* qk*)
+    (check-within qp* #(1.0 -0.6849750434472566 4.839140897040084 -8.992972540277597 29.145906837051825) epsilon100)
+    (check-within K* #(1.0 1.0919036572997787 1.0019196569203022 3.933013624211993 5.0) epsilon100)
+    (check-within qk* #(1.0 -2.8905094995548675 6.966052236569645 -8.822295643728838 5.0) epsilon100)
+    (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
+                  '(0 0 1 undefined undefined) epsilon100))
+  ;cond big kv
+  ;cond else
+  )
 
 ; Variable - shift K - polynomial iteration for a quadratic
 ; factor converges only if the zeros are equimodular or nearly so.
@@ -557,7 +699,7 @@
   (roots p degree zeror* zeroi*)
   (for/list ([i (in-range degree)])
     (+ (rf zeror* i)(* +i (rf zeroi* i)))))
-(module+ test
+#;(module+ test
   ;(mfr #(1. 2. 3. 4. -5.))
   ;(mfr #(1. 3. 1. 0.08866210790363471))
   ;irritatingly difficult (flpoly-from-roots .9998 .9999 1. 1.003 1.003
