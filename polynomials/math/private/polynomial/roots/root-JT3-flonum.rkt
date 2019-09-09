@@ -5,6 +5,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 |#
 
 (require math/flonum)
+(require (for-syntax racket/base))
 
 (module+ test
   (require rackunit))
@@ -25,6 +26,16 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 (define mk
   (case-lambda [() (box 'undefined)]
                [(n) (make-vector n 0.)]))
+
+(define-syntax (prepare-one stx)
+  (syntax-case stx (*)
+    [(_ (id *)) #'(define id (box 'undefined))]
+    [(_ (id nr *)) #'(define id (make-vector nr 0.0))]
+    [(_ (id nr)) #'(define id (box nr))]
+    [(_ (id nr v)) #'(define id (make-vector nr v))]))
+(define-syntax (prepare stx)
+  (syntax-case stx ()
+    [(_ ids ...) #'(begin (prepare-one ids) ...)]))
 
 (define (isZero v)(= v 0))
 
@@ -88,8 +99,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
   (goto00))
 (module+ test
   (let ()
-    (define szr* (mk))(define szi* (mk))
-    (define lzr* (mk))(define lzi* (mk))
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
     (Quad 1 6 3 szr* szi* lzr* lzi*)
     (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
                   '(-0.5505102572168219 0 -5.449489742783178 0)
@@ -100,7 +110,14 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (Quad 1 2 3 szr* szi* lzr* lzi*)
     (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
                   '(-1 1.414213562373095 -1 -1.414213562373095)
-                  epsilon100)))
+                  epsilon100))
+  (let ()
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
+    (Quad 1 6 7 szr* szi* lzr* lzi*)
+    (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
+                  '(-1.585786437626905 0 -4.414213562373095 0)
+                  epsilon100))
+)
 
 ; Divides p by the quadratic x^2+u*x+v
 ; placing the quotient in q and the remainder in a, b
@@ -323,6 +340,8 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                  (<= (abs t) (* 0.001 (abs (- s t)))) (> mp omp)
                  ;A cluster of zeros near the real axis has been encountered;
                  ;Return with iFlag set to initiate a quadratic iteration
+                 (println (list (list (rf sss*) N p NN qp* (rf szr*)(rf szi*)K* qk*)
+                                (list t omp s pv mp ms ee)))
                  (s! iFlag* 1)(s! sss* s))
     ;Return if the polynomial value has increased significantly
     (set! omp mp)
@@ -344,11 +363,21 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (set! t (if (> (abs kv) (* (abs (rf K* (- N 1))) epsilon10)) (- (/ pv kv)) 0))
     (set! s (+ s t))))
 (module+ test
-  ;break small mp
+  ;break small mp = zero found
+  (let ()
+    (prepare (iFlag* *)(NZ* *)(szr* *)(szi* *)(sss* 0.2))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (define qk* (vector 1. 2. 3. 4. 5.))
+    (RealIT iFlag* NZ* sss* 4 #(1. 2. 3. 4. -5.) 5 qp* szr* szi* K* qk*)
+    (check-within qp* #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0) epsilon100)
+    (check-within K* #(1.0 2.6841243194530695 4.836274723373265 7.308613153815818 5.0) epsilon100)
+    (check-within qk* #(1.0 3.3682486283245323 7.140575458942369 12.193654442009374 5.0) epsilon100)
+    (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
+                  '(0 1 0.2 0.6841243194530697 0) epsilon100))
   ;break iterrations j (iFlag=0 & NZ=0)
   (let ()
-    (define iFlag* (mk))(define NZ* (mk))(define szr* (mk))(define szi* (mk))
-    (define sss* (box 1.0))
+    (prepare (iFlag* *)(NZ* *)(szr* *)(szi* *)(sss* 1.0))
     (define qp* (vector 1. 2. 3. 4. 5.))
     (define K* (vector 1. 2. 3. 4. 5.))
     (define qk* (vector 1. 2. 3. 4. 5.))
@@ -358,22 +387,32 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (check-within qk* #(1.0 -2.8905094995548675 6.966052236569645 -8.822295643728838 5.0) epsilon100)
     (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
                   '(0 0 1 undefined undefined) epsilon100))
-  ;break  cluster of zeros
+  ;break  cluster of zeros; no imput found yet
+  #;(let ()
+    (prepare (iFlag* *)(NZ* *)(szr* *)(szi* *)(sss* 0.99))
+    (define p #(1 -4.02 6.060325000224999 -4.060650000454499 1.020325000229573))
+    (define qp* (vector 1 -3.1092915264736485 3.2636693854115073 -1.1547881465431287 0.0006940334376190904))
+    (define K* (vector 1 -3.369482204609523 3.7847914086197885 -1.4221765587372293 1.0))
+    (define qk* (vector 1 -2.0008741423581955 1.0281876447049845 0.0029763588761959614 1.0))
+    (RealIT iFlag* NZ* sss* 4 p 5 qp* szr* szi* K* qk*)
+    (check-within qp* #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0) epsilon100)
+    (check-within K* #(1.0 2.6841243194530695 4.836274723373265 7.308613153815818 5.0) epsilon100)
+    (check-within qk* #(1.0 3.3682486283245323 7.140575458942369 12.193654442009374 5.0) epsilon100)
+    (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
+                  '() epsilon100))
+  ;cond big kv [used in previous tests]
+  ;cond else [used at least the first time in next test]
   (let ()
-    (define iFlag* (mk))(define NZ* (mk))(define szr* (mk))(define szi* (mk))
-    (define sss* (box 0.287815479557648))
+    (prepare (iFlag* *)(NZ* *)(szr* *)(szi* *)(sss* 0.0))
     (define qp* (vector 1. 2. 3. 4. 5.))
-    (define K* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 0. 5.))
     (define qk* (vector 1. 2. 3. 4. 5.))
-    (RealIT iFlag* NZ* sss* 4 #(1. 2. 3. 4. 5.) 5 qp* szr* szi* K* qk*)
-    (check-within qp* #(1.0 -0.6849750434472566 4.839140897040084 -8.992972540277597 29.145906837051825) epsilon100)
-    (check-within K* #(1.0 1.0919036572997787 1.0019196569203022 3.933013624211993 5.0) epsilon100)
-    (check-within qk* #(1.0 -2.8905094995548675 6.966052236569645 -8.822295643728838 5.0) epsilon100)
+    (RealIT iFlag* NZ* sss* 4 #(1. 2. 3. 4. -5.) 5 qp* szr* szi* K* qk*)
+    (check-within qp* #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0) epsilon100)
+    (check-within K* #(1.0 2.6841243194530113 4.836274723373138 7.308613153815954 5.0) epsilon100)
+    (check-within qk* #(1.0 3.368257161011083 7.1406436905046 12.193742265406083 5.0) epsilon100)
     (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
-                  '(0 0 1 undefined undefined) epsilon100))
-  ;cond big kv
-  ;cond else
-  )
+                  '(0 1 0.0 0.6841243194530697 0) epsilon100)))
 
 ; Variable - shift K - polynomial iteration for a quadratic
 ; factor converges only if the zeros are equimodular or nearly so.
@@ -388,10 +427,10 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
   (define triedFlag #f)
   (for/fold ([j 1])
             ([_ (in-naturals 1)])
-    (Quad 1 u v szr* szi* lzr* lzi*)
+    (Quad 1. u v szr* szi* lzr* lzi*)
     ;Return if the roots of the quadratic are real and not close
     ;to multiple or nearly equal and of opposite sign
-    #:break (> (- (abs (rf szr*))(abs (rf lzr*))) (* 0.01 (abs (rf lzr*))))
+    #:break (> (abs (- (abs (rf szr*))(abs (rf lzr*)))) (* 0.01 (abs (rf lzr*))))
     ;Evaluate polynomial by quadratic synthetic division
     (QuadraticSyntheticDivision NN u v p qp* a* b*)
     (define mp (+ (abs (- (rf a*) (* (rf szr*) (rf b*)))) (abs (* (rf szi*) (rf b*)))))
@@ -406,10 +445,12 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     ;value is less than 20 times this bound
     #:break (and (<= mp (* 20 ee)) (s! NZ* 2))
     ;Stop iteration after 20 steps
-    #:break (> j 10)
+    #:break (and (> j 20) (println (list 'QuadIT-maxiter u v p qp* K* qk*)))
     (when (and (>= j 2)
                (<= relstp 0.01) (>= mp omp) (not triedFlag))
+(println (list 'QuadIt-relstop u v p qp* K* qk*))
       ;A cluster appears to be stalling the convergence.
+      ;[TODO ???]
       ;Five fixed shift steps are taken with a u, v close to the cluster
       (set! relstp (if (< relstp epsilon.0) (sqrt epsilon.0) (sqrt relstp)))
       (set! u (- u (* u relstp)))
@@ -433,10 +474,56 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
       (set! v (rf vi*)))
     #:break (isZero (rf vi*))
     j)
-  1)
+  (void))
+(module+ test
+  ;break real/not close
+  (let ()
+    (define p #(1. 2. 3. 4. 5.))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (define qk* (vector 1. 2. 3. 4. 5.))
+    (define NN (vector-length p))
+    (define N (- NN 1))
+    (prepare (NZ* *)(szr* *)(szi* *)(lzr* *)(lzi* *)
+             (a* *)(b* *)(c* *)(d* *)(e* *)(f* *)(g* *)(h* *)
+             (a1* *)(a3* *)(a7* *))
+    (QuadIT N NZ* 6. 7. szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
+    (check-within qp* #(1. 2. 3. 4. 5.) epsilon100)
+    (check-within K* #(1. 2. 3. 4. 5.) epsilon100)
+    (check-within qk* #(1. 2. 3. 4. 5.) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(0 -1.585786437626905 0 -4.414213562373095 0) epsilon100)
+    (check-within (map rf (list a* b* c* d* e* f* g* h* a1* a3* a7*))
+                  '(undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined)
+                  epsilon100))
+  ;break converged
+  (let ()
+    (define p #(1. 2. 3. 4. 5.))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (define qk* (vector 1. 2. 3. 4. 5.))
+    (define NN (vector-length p))
+    (define N (- NN 1))
+    (prepare (NZ* *)(szr* *)(szi* *)(lzr* *)(lzi* *)
+             (a* *)(b* *)(c* *)(d* *)(e* *)(f* *)(g* *)(h* *)
+             (a1* *)(a3* *)(a7* *))
+    (QuadIT N NZ* -0.575630959115296 0.0828377502729989 szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
+    (check-within qp* #(1.0 2.575630959115296 2.3944555573388273 0. 0.) epsilon100)
+    (check-within K* #(1.0 2.7141314657388516 2.7511817500546467 0.3316333077843976 5.0) epsilon100)
+    (check-within qk* #(1.0 3.2897624433408463 2.556713395073429 -5.066185467027889 5.0) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(2 0.287815479557648 1.4160930801719076 0.287815479557648 -1.4160930801719076) epsilon100)
+    (check-within (map rf (list a* b* c* d* e* f* g* h* a1* a3* a7*))
+                  '(0. 0. -5.066185467027889 2.556713395073429 8.83349690503021e-08 -0.5046624154826573 -5.0848344590867324e-08 -9.995370529786954e-07 -7.045165712076444e-07 -1.096316891718955e-13 -7.309719664513362e-08)
+                  epsilon100))
+  ;break to many steps
+  ;[TODO ???]
+  ;relstop
+  ;[TODO ???]
+  ;vi is zero [done in break converged]
+  )
 
 (define (FixedShift L2 sr v K* N p* NN qp* lzi* lzr* szi* szr*)
-(println (list 'FixedShift L2 sr v K* N p* NN qp* lzi* lzr* szi* szr*))
   (call/ec
    (λ (return)
      (define qk* (make-vector (+ N 1) 0))(define svk* (make-vector (+ N 1) 0))
@@ -450,13 +537,12 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
      ;Evaluate polynomial by synthetic division
      (define a* (box 'undefined))(define b* (box 'undefined))
      (QuadraticSyntheticDivision NN u v (rf p*) qp* a* b*)
-(printf "a&b: ~a ~a\n" (rf a*)(rf b*))
      (define a1* (box 'undefined))(define a3* (box 'undefined))(define a7* (box 'undefined))(define c* (box 'undefined))(define d* (box 'undefined))(define e* (box 'undefined))(define f* (box 'undefined))(define g* (box 'undefined))(define h* (box 'undefined))
      (define tFlag (calcSC N (rf a*) (rf b*) a1* a3* a7* c* d* e* f* g* h* (rf K*) u v qk*))
      (define otv 0)
      (define ots 0)
      (for ([j (in-range L2)])
-       (define fflag 1)
+       (define fflag #t)
        ;Calculate next K polynomial and estimate v
        (nextK N tFlag (rf a*) (rf b*) (rf a1*) a3* a7* K* (rf qk*) (rf qp*))
        (set! tFlag (calcSC N (rf a*) (rf b*) a1* a3* a7* c* d* e* f* g* h* (rf K*) u v qk*))
@@ -488,7 +574,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
            (let loop ()
              (define continue #f)
              (cond
-               [(and (and fflag (set! fflag 0))
+               [(and (and fflag (set! fflag #f))
                      (and spass (or (not vpass) (< tss tvv))))
                 ;Do nothing. Provides a quick short circuit
                 ]
@@ -503,6 +589,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                 (cond
                   [(or stry (not spass))(s! iFlag* 0)]
                   [else (for ([i (in-range N)])(s! K* i (rf svk* i)))])])
+             (when (= (rf iFlag*) 0) (list 'FixedShift-not7 L2 sr v K* N p* NN qp* lzi* lzr* szi* szr*))
              (when (not (= (rf iFlag*) 0))
                (define sss* (box s))
                (RealIT iFlag* NZ* sss* N (rf p*) NN qp* szr* szi* K* qk*)
@@ -513,6 +600,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                (set! stry #t)
                (set! betas (* betas 0.25))
                (when (not (= (rf iFlag*) 0))
+                 (println (list 'FixedShift-9 L2 sr v K* N p* NN qp* lzi* lzr* szi* szr*))
                  ;If linear iteration signals an almost double real zero,
                  ;attempt quadratic iteration
                  (s! ui* (- (+ s s)))
@@ -535,6 +623,97 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
        (set! otv tv)
        (set! ots ts))
      (rf NZ*))))
+(module+ test
+  ; 1)!(j=0) & tFlag=3
+  ; 2)+>spass || vpass
+  ; 3)++>cond fflag && spass && (vpass || (tss<tvv))
+  ; 4)++>else->quaditOK
+  ; 5)++>else->stry && !spass
+  ; 6)++>else->else
+  ; 7)+>!(iFlag=0)
+  ; 8)++>!(NZ>0)
+  ; 9)++>!(iFlag=0)
+  ;10)+> !vpass || vtry
+  (let ();passing !1) 1) 2) & 4)
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
+    (define p* (vector 1. 2. 3. 4. 5.))
+    (define NN (vector-length p*))(define N (- NN 1))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (s! NZ* (FixedShift 5 1.0 2.0 K* N p* NN qp* lzi* lzr* szi* szr*))
+    (check-within p* #(1. 2. 3. 4. 5.) epsilon100)
+    (check-within qp* #(1.0 2.575630959115296 2.394455557338827 0.0 0.0) epsilon100)
+    (check-within K* #(1.0 3.669100109842665 5.210828554789748 2.6182632847377154 5.0) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(2 0.28781547955764797 1.4160930801719078 0.28781547955764797 -1.4160930801719078)
+                  epsilon100))
+  (let ();passing !1) 1) 2) 3) 7) & 8)
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
+    (define p* (vector 1. 2. 3. 4. -5.))
+    (define NN (vector-length p*))(define N (- NN 1))
+    (define qp* (vector 1. 2. 3. 4. 5.))
+    (define K* (vector 1. 2. 3. 4. 5.))
+    (s! NZ* (FixedShift 5 1.0 2.0 K* N p* NN qp* lzi* lzr* szi* szr*))
+    (check-within p* #(1. 2. 3. 4. -5.) epsilon100)
+    (check-within qp* #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0) epsilon100)
+    (check-within K* #(1.0 2.684124319453068 4.8362747233736165 7.308613153816669 5.0) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(1 0.6841243194530697 0 undefined undefined)
+                  epsilon100))
+  (let ();passing !1) 1) !2)
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
+    (define NN 5)(define N (- NN 1))
+    (define p*  (vector 5.973052788152122 3.1198874346298604 4.732251119406017 3.6024342708537196 4.181120877543731))
+    (define qp* (vector 5.973052788152122 44.392007844469305 307.9627791918564 2105.483624570146 14371.728188895837))
+    (define K*  (vector 5.973052788152122 -7.411175697861289 -0.024070219044631358 -0.4006197810018648 1.397337061503462))
+    (s! NZ* (FixedShift 5 3.4548598408258635 0.586936423108628 K* N p* NN qp* lzi* lzr* szi* szr*))
+    (check-within p* #(5.973052788152122 3.1198874346298604 4.732251119406017 3.6024342708537196 4.181120877543731) epsilon100)
+    (check-within qp* #(5.973052788152122 -4.285169564149636 5.5226517874526735 0.0 0.0) epsilon100)
+    (check-within K* #(5.973052788152122 -1.5301483105752052 3.546152726901954 2.5472775128829883 1.397337061503462) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(2 -0.6198720538237862 0.6106098345570848 -0.6198720538237862 -0.6106098345570848)
+                  epsilon100))
+  (let ();passing ... !8) 10) ...
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
+    (define NN 5)(define N (- NN 1))
+    (define p*  (vector 8.41755012535733 4.671578854715546 0.5931615068990723 0.7322427309831809 5.728464948833154))
+    (define qp* (vector 3.6476498420143426 2.721198761372208 6.567163943771762 9.983085919283766 9.941966838186865))
+    (define K*  (vector 8.401638613441222 9.708937329579836 0.33872763171218045 0.1468471881337965 0.32549909728202325))
+    (s! NZ* (FixedShift 5 0.24442525134432416 9.30559289538379 K* N p* NN qp* lzi* lzr* szi* szr*))
+    (check-within p* #(8.41755012535733 4.671578854715546 0.5931615068990723 0.7322427309831809 5.728464948833154) epsilon100)
+    (check-within qp* #(8.41755012535733 13.252560535681688 8.27797623788355 4.689582056016661e-13 6.483702463810914e-14) epsilon100)
+    (check-within K* #(8.41755012535733 4.690864413054477 -5.201527218920869 -8.4197321153409 0.32549909728202325) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(2 0.5097077863021263 0.6574273375997998 0.5097077863021263 -0.6574273375997998)
+                  epsilon100))
+  (let ();passing ... 5) ...
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
+    (define NN 5)(define N (- NN 1))
+    (define p*  (vector 6.7460988725508955 5.98370659970934 6.157731644531755 4.907674864119937 3.8729258686230943))
+    (define qp* (vector 7.428443942944599 4.547128927848027 5.135593346367454 5.7702655368985685 7.307443236920097))
+    (define K*  (vector 8.877633271400752 0.038665127484674225 5.24238410415498 4.852226488120647 6.75060148912601))
+    (s! NZ* (FixedShift 5 1.2246379011135278 9.917716291473479 K* N p* NN qp* lzi* lzr* szi* szr*))
+    (check-within p* #(6.7460988725508955 5.98370659970934 6.157731644531755 4.907674864119937 3.8729258686230943) epsilon100)
+    (check-within qp* #(6.7460988725508955 22.50676332767947 -5.62289224272052 -232.08003236777014 -508.788831588999) epsilon100)
+    (check-within K* #(6.7460988725508955 -2.497107022629141 19.869027988280223 5.097443105442949 6.75060148912601) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(0 0.10531206398918308 0 -1.1965964573712842 0)
+                  epsilon100))
+  #;(let ();looking for -> passing !7) 9)
+    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
+    (define (rdm)(- (* 20 (random)) 10))
+    (define NN 5)(define N (- NN 1))
+    (define p* (for/vector ([i (in-range NN)]) (rdm)))(println (list 'p p*))
+    (define qp* (for/vector ([i (in-range NN)]) (rdm)))(println (list 'qp qp*))
+    (define K* (for/vector ([i (in-range NN)]) (rdm)))(println (list 'K K*))
+    (s! NZ* (FixedShift 5 (rdm) (rdm) K* N p* NN qp* lzi* lzr* szi* szr*))
+    (check-within p* #() epsilon100)
+    (check-within qp* #() epsilon100)
+    (check-within K* #() epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '()
+                  epsilon100))
+  )
 
 (define evalPoly
   (case-lambda
@@ -564,7 +743,26 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 ; They store the integer in the int object pointed to by exp.
 ; The functions return a number x such that x has a magnitude in 
 ; the interval [1/2, 1) or 0, and value = x*(2**exp).
-  'not-implemented)
+  (define-values (sc- sc+) (for/fold ([sc- +inf.0][sc+ -inf.0])([v (in-vector p*)]) (define V (abs v))(values (min sc- V)(max sc+ V))))
+  (define FLT_MIN (floating-point-bytes->real (bytes #b00000000 #b00000000 #b00000000 #b00000001)))
+  (define FLT_MAX (floating-point-bytes->real (bytes #b11111111 #b11111111 #b11111111 #b01111110)))
+  (define sc (fl/ (fl/ FLT_MIN epsilon.0) sc-));was using +min.0, but that is for double, not single Float
+  (define s
+    (cond
+      [(or (and (< sc 1) (<= 10 sc+))
+           (and (< 1 sc) (<= sc+ (/ FLT_MAX sc))))
+       (when (= sc 0) (set! sc FLT_MIN))
+       (define l (floor (fl+ (fl/ (fllog sc)(fllog 2.0)) 0.5)))
+       (flexpt 2.0 l)]
+      [else 1.0]))
+  (when (not (= s 1.0))
+    (for ([i (in-range (+ N 1))])
+      (s! p* i (* (rf p* i) s)))))
+(module+ test
+  (let ()
+    (define p* (vector 1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
+    (scalePoly p* (- (vector-length p*) 1))
+    (check-within p* #(5.293955920339377e-23 -2.649995515044282e-22 5.306029962073926e-22 -5.3120727149296205e-22 2.6590596436449997e-22 -5.324169677789603e-23) epsilon100)))
 
 ;Compute lower bound on moduli of zeros
 (define (lowerBoundZeroPoly p N)
@@ -654,9 +852,6 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
               (s! K* j (+ (* t (rf K* (- j 1))) (rf p* j))))
             (s! K* 0 (rf p* 0))
             (set! zerok (<= (abs (rf K* NM1)) (* (abs bb) epsilon10)))]))
-(printf "Zero shift finished\n")
-(println K*)
-(printf "bound: ~a\n" bnd)
        ;Save K for restarts with new shifts
        (for ([i (in-range N)])(s! temp* i (rf K* i)))
        ;Loop to select the quadratic corresponding to each new shift
@@ -696,15 +891,35 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 (define (mfr p)
   (define degree (- (vector-length p) 1))
   (define zeror* (make-vector degree 0))(define zeroi* (make-vector degree 0))
-  (roots p degree zeror* zeroi*)
-  (for/list ([i (in-range degree)])
-    (+ (rf zeror* i)(* +i (rf zeroi* i)))))
-#;(module+ test
-  ;(mfr #(1. 2. 3. 4. -5.))
-  ;(mfr #(1. 3. 1. 0.08866210790363471))
+  (define return-value (roots p degree zeror* zeroi*))
+  (cons return-value
+        (for/list ([i (in-range degree)])
+          (+ (rf zeror* i)(* +i (rf zeroi* i))))))
+(module+ test
+  #;(check-within (mfr #(1. 2. 3. 4. 5.))
+                '(0 0.287815479557648+1.4160930801719078i 0.287815479557648-1.4160930801719078i -1.287815479557648+0.8578967583284905i -1.287815479557648-0.8578967583284905i)
+                epsilon100)
+  #;(check-within (mfr #(1. 2. 3. 4. -5.))
+                '(0 0.6841243194530697 -2.0591424445683537 -0.3124909374423581+1.8578744391719895i -0.3124909374423581-1.8578744391719895i)
+                epsilon100)
+  #;(check-within (mfr #(1. 3. 1. 0.08866210790363471))
+                '(0 -0.18350341911302884 -0.1835034190315191 -2.632993161855452)
+                epsilon100)
   ;irritatingly difficult (flpoly-from-roots .9998 .9999 1. 1.003 1.003
-  ;(mfr #(1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
+  #;(check-within (mfr #(1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
+                '(0 0.9998971273942638 1.0029951281002996 0.9995771489617781 1.0030048540302405 1.0002257415134181)
+                epsilon100)
   ;same but exact
   ;(mfr #(1 -50057/10000 501140361/50000000 -501711082871/50000000000 251141082742009/50000000000000 -50285360871009/50000000000000))
-  (mfr #(1e-8 1e-16 1e-20 -1e25 38.5))
+  #;(check-within (mfr #(1e-8 1e-16 1e-20 -1e25 38.5))
+                (0 3.85e-24 100000000000.0 -50000000000.0+86602540378.44386i -50000000000.0-86602540378.44386i)
+                epsilon100)
+  ;checks FixedShift 6)
+  (check-within (mfr #(1 -1.1262458658846637 -1.0101179104905715 0.1369529023140107  -0.07030543743385387  0.34354611896594955  0.7685557744974647  0.9049868924344322 -0.4694264319569345))
+                '(0 0.37998534697611247 -0.6385228013511156+0.6232370795625065i -0.6385228013511156-0.6232370795625065i 0.16462177207475362+0.9168019517176714i 0.16462177207475362-0.9168019517176714i 1.1475571613888245 -1.00470119265642 1.5512066087288707)
+                epsilon100)
+  (begin
+    (define p (for/vector ([i (in-range (+ 5 (random 5)))])(- (* (random) 20) 10)))
+    p
+    (mfr p))
   )
