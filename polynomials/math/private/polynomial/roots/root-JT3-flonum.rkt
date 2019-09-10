@@ -264,9 +264,9 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 ; Compute new estimates of the quadratic coefficients
 ; using the scalars computed in calcSC
 (define (newest tFlag uu* vv* a a1 a3 a7 b c d f g h u v K N p)
-  (s! uu* 0)(s! vv* 0)
+  (s! uu* 0.0)(s! vv* 0.0)
   (unless (= tFlag 3)
-    (define a4 0)(define a5 0)
+    (define a4 0.0)(define a5 0.0)
     (cond
       [(not (= tFlag 2))
        (set! a4 (+ a (* u b) (* h f)))
@@ -284,7 +284,10 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (define temp (+ (- c4) a5 (* b1 a4)))
     (unless (= temp 0.0)
       ;!!!it temp ≈ 0.0 these values blow up. Is this a good idea?
-      (s! uu* (+ (- (/ (+ (* u (+ c3 c2)) (* v (+ (* b1 a1)(* b2 a7)))) temp)) u))
+      (s! uu* (+ (- (/ (+ (* u (+ c3 c2))
+                          (* v (+ (* b1 a1)(* b2 a7))))
+                       temp))
+                 u))
       (s! vv* (* v (+ 1.0 (/ c4 temp)))))))
 (module+ test
   ;tflag=3
@@ -340,8 +343,6 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                  (<= (abs t) (* 0.001 (abs (- s t)))) (> mp omp)
                  ;A cluster of zeros near the real axis has been encountered;
                  ;Return with iFlag set to initiate a quadratic iteration
-                 (println (list (list (rf sss*) N p NN qp* (rf szr*)(rf szi*)K* qk*)
-                                (list t omp s pv mp ms ee)))
                  (s! iFlag* 1)(s! sss* s))
     ;Return if the polynomial value has increased significantly
     (set! omp mp)
@@ -388,18 +389,18 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
                   '(0 0 1 undefined undefined) epsilon100))
   ;break  cluster of zeros; no imput found yet
-  #;(let ()
-    (prepare (iFlag* *)(NZ* *)(szr* *)(szi* *)(sss* 0.99))
-    (define p #(1 -4.02 6.060325000224999 -4.060650000454499 1.020325000229573))
-    (define qp* (vector 1 -3.1092915264736485 3.2636693854115073 -1.1547881465431287 0.0006940334376190904))
-    (define K* (vector 1 -3.369482204609523 3.7847914086197885 -1.4221765587372293 1.0))
-    (define qk* (vector 1 -2.0008741423581955 1.0281876447049845 0.0029763588761959614 1.0))
+  (let ()
+    (prepare (iFlag* *)(NZ* *)(szr* *)(szi* *)(sss* 3.5502909446276085))
+    (define p #(4.9679877220982345 9.29937913880471 -9.609506455896735 -2.5160214731778163 -6.029809381393797))
+    (define qp* (vector 0 0 0 0 0))
+    (define K* (vector 8.514417957281449 0.5198895391395837 -9.66980775616132 0.45524621258751097 -6.75327262484485))
+    (define qk* (vector 0 0 0 0 0))
     (RealIT iFlag* NZ* sss* 4 p 5 qp* szr* szi* K* qk*)
-    (check-within qp* #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0) epsilon100)
-    (check-within K* #(1.0 2.6841243194530695 4.836274723373265 7.308613153815818 5.0) epsilon100)
-    (check-within qk* #(1.0 3.3682486283245323 7.140575458942369 12.193654442009374 5.0) epsilon100)
+    (check-within qp* #(4.9679877220982345 2.2034324874736058 -12.756744383111027 15.70487250861968 -28.461615521215446) epsilon100)
+    (check-within K* #(4.9679877220982345 -6701.697712994184 7942.889509061441 -1976.5039946730667 -6.75327262484485) epsilon100)
+    (check-within qk* #(4.9679877220982345 -5.895604181952111 1.4763390711352997 -0.021073014592237982 0.0) epsilon100)
     (check-within (map rf (list iFlag* NZ* sss* szr* szi*))
-                  '() epsilon100))
+                  '(1 0 -1.4283341763844224 undefined undefined) epsilon100))
   ;cond big kv [used in previous tests]
   ;cond else [used at least the first time in next test]
   (let ()
@@ -425,7 +426,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
   (define omp 0);initialize remove warning
   (define ui* (box 'undefined))(define vi* (box 'undefined))
   (define triedFlag #f)
-  (for/fold ([j 1])
+  (for/fold ([j 0])
             ([_ (in-naturals 1)])
     (Quad 1. u v szr* szi* lzr* lzi*)
     ;Return if the roots of the quadratic are real and not close
@@ -445,16 +446,16 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     ;value is less than 20 times this bound
     #:break (and (<= mp (* 20 ee)) (s! NZ* 2))
     ;Stop iteration after 20 steps
+    (set! j (+ j 1))
     #:break (and (> j 20) (println (list 'QuadIT-maxiter u v p qp* K* qk*)))
     (when (and (>= j 2)
                (<= relstp 0.01) (>= mp omp) (not triedFlag))
-(println (list 'QuadIt-relstop u v p qp* K* qk*))
       ;A cluster appears to be stalling the convergence.
       ;[TODO ???]
       ;Five fixed shift steps are taken with a u, v close to the cluster
       (set! relstp (if (< relstp epsilon.0) (sqrt epsilon.0) (sqrt relstp)))
       (set! u (- u (* u relstp)))
-      (set! v (+ v (* u relstp)))
+      (set! v (+ v (* v relstp)))
       (QuadraticSyntheticDivision NN u v p qp* a* b*)
       (for ([i (in-range 5)])
         (set! tFlag (calcSC N (rf a*) (rf b*) a1* a3* a7* c* d* e* f* g* h* (rf K*) u v qk*))
@@ -519,7 +520,25 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
   ;break to many steps
   ;[TODO ???]
   ;relstop
-  ;[TODO ???]
+  (let ()
+    (define p #(-74.43388870038298 -48.684338183687615 82.95039531162064 2.082613677062014 60.82122424869209 -46.15017147716964 61.0180453610964 47.02754709444238 -5.330451975747479 91.51704177156668))
+    (define NN (vector-length p))
+    (define K* (vector 38.515673952936254 7.252656554000609 -84.42246656861926 31.693388752691646 -27.265410421231138 -35.244767584584565 -97.79006609235279 8.92096535665003 -60.693225828975194 -16.564537967886736))
+    (define qp* (make-vector NN 0.))
+    (define qk* (make-vector NN 0.))
+    (define N (- NN 1))
+    (prepare (NZ* *)(szr* *)(szi* *)(lzr* *)(lzi* *)
+             (a* *)(b* *)(c* *)(d* *)(e* *)(f* *)(g* *)(h* *)
+             (a1* *)(a3* *)(a7* *))
+    (QuadIT N NZ* 14.737906787890154 56.6995805579966 szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
+    (check-within qp* #(-74.43388870038298    28.5525675415266  134.72025177002524 -168.93474867929848   88.79349933216068  46.45222659669343 -84.28416458872897   83.6875414818494   -4.263256414560601e-14 0.0) epsilon100)
+    (check-within K*  #(-74.43388870038298 -1291.101631406862   640.9347772344079  2219.5491668571904 -2906.28648822974   1620.6910078684268  739.2772124821581 -1410.6042877693205 1483.7141716555477     -16.564537967886736) epsilon100)
+    (check-within qk* #(-74.43388870038298 -1213.8647256817187 1981.9086377214949  1490.4356655462275 -6620.1774535442755 6860.294452068977   860.1761575225632 -9805.29130225142  10717.60014995853         0.0) epsilon100)
+    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
+                  '(2 -0.5188289035664532 0.907949839624714 -0.5188289035664532 -0.907949839624714) epsilon100)
+    (check-within (map rf (list a* b* c* d* e* f* g* h* a1* a3* a7*))
+                  '(0.0 -4.263256414560601e-14 10717.60014995853 -9805.29130225142 1.4951655107757719e-13 -0.9148775066300042 1.5514701652109156e-13 -1.0600397392729366e-09 4.967025159902387e-10 1.8507724128489367e-22 1.0510034321805513e-09)
+                  epsilon100));NOT COMPLETELY IN LINE WITH C-impl! roots are exact, but K*/qk* not -> (discarded anyway for the next round, but still...)
   ;vi is zero [done in break converged]
   )
 
