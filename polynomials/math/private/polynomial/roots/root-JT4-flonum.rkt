@@ -1,12 +1,32 @@
 #lang racket/base
 
 #|
-based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe.html
+based on the original fortran & cpp translation fromTOMS/493 found at http://www.akiti.ca/PolyRootRe.html
 |#
 
-(require math/flonum
+(require math/flonum math/bigfloat
          racket/match)
 (require (for-syntax racket/base))
+(define (make-dd f1 f2)
+  (λ (a b)
+    (cond
+      [(and (pair? a)(pair? b))(define-values (c d)(f1 (car a)(cdr a)(car b)(cdr b)))(cons c d)]
+      [(pair? a)(define-values (c d)(f1 (car a)(cdr a)b))(cons c d)]
+      [(pair? b)(define-values (c d)(f1 (car b)(cdr b)a))(cons c d)]
+      [else (define-values (c d)(f2 a b))(cons c d)])))
+(define (make-bf f1)
+  (λ (a b)
+    (cond
+      [(and (bigfloat? a) (bigfloat? b))(f1 a b)]
+      [(bigfloat? a) (f1 a (bf b))]
+      [(bigfloat? b) (f1 (bf a) b)]
+      [else (f1 (bf a) (bf b))])))
+(define dd+ +)(define dd* *)(define dd/ /)(define dd- -)(define dd->fl values)
+;(define dd+ fl+)(define dd* fl*)(define dd/ fl/)(define dd- fl-)(define dd->fl values)
+;(define dd+ (make-dd fl2+ fl+/error))(define dd* (make-dd fl2* fl*/error))(define dd/ (make-dd fl2/ fl//error))(define dd- (make-dd fl2- fl-/error))(define (dd->fl a)(car a));
+;(define dd+ (make-bf bf+))(define dd* (make-bf bf*))(define dd/ (make-bf bf/))(define dd- (make-bf bf-))(define dd->fl bigfloat->flonum)(bf-precision 1024)
+
+(require math/flonum)
 
 (define-syntax label
   (let ()
@@ -17,8 +37,9 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                   nextK-type3 nextK-normal nextK-smalla1
                   newest-type3 newest-type2 newest-type1 newest-temp0 newest-normal
                   RealIT-converged RealIT-maxiter RealIT-zero-cluster RealIT-scaled RealIT-unscaled
-                  QuadIT-go-linear QuadIT-converged QuadIT-relstp QuadIT-nonconverging QuadIT-normal
-                  FixedShift-maxiter))
+                  QuadIT-go-linear QuadIT-converged QuadIT-relstp QuadIT-norelstp QuadIT-nonconverging QuadIT-normal
+                  FixedShift-maxiter FixedShift-pass0-or-factor FixedShift-nonconvergingpass FixedShift-LinFirst FixedShift-QuadFirst FixedShift-QuadConverged
+                  FixedShift-LinSecond FixedShift-LinConverged FixedShift-QuadSecondSpec FixedShift-QuadSecondNorm FixedShift-QuadOver FixedShift-LinOver))
     (define S '(QuadIT-maxiter))
     (λ (stx)
       (syntax-case stx ()
@@ -83,7 +104,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 ; ZEROS ARE REAL AND BOTH ZEROS ARE COMPLEX.
 ; THE SMALLER REAL ZERO IS FOUND DIRECTLY FROM THE
 ; PRODUCT OF THE ZEROS C/A.
-(define (Quad A B1 C szr* szi* lzr* lzi*)
+(define (Quad_imp A B1 C szr* szi* lzr* lzi*)
   (define B (box 'undefined))(define E (box 'undefined))(define D (box 'undefined))
   (define (goto00)
     (cond
@@ -158,23 +179,27 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (s! lzi* (- (rf szi*))))
 
   (goto00))
+(define (Quad a b c)
+  (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
+  (Quad_imp a b c szr* szi* lzr* lzi*)
+  (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*)))
 (module+ test
   (let ()
     (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
-    (Quad 1 6 3 szr* szi* lzr* lzi*)
+    (Quad_imp 1 6 3 szr* szi* lzr* lzi*)
     (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
                   '(-0.5505102572168219 0 -5.449489742783178 0)
                   epsilon100))
   (let ()
     (define szr* (mk))(define szi* (mk))
     (define lzr* (mk))(define lzi* (mk))
-    (Quad 1 2 3 szr* szi* lzr* lzi*)
+    (Quad_imp 1 2 3 szr* szi* lzr* lzi*)
     (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
                   '(-1 1.414213562373095 -1 -1.414213562373095)
                   epsilon100))
   (let ()
     (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
-    (Quad 1 6 7 szr* szi* lzr* lzi*)
+    (Quad_imp 1 6 7 szr* szi* lzr* lzi*)
     (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
                   '(-1.585786437626905 0 -4.414213562373095 0)
                   epsilon100)))
@@ -183,7 +208,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 ; placing the quotient in q and the remainder in a, b
 (define (QuadraticSyntheticDivision NN u v p)
   (label QuadraticSyntheticDivision)
-  (define q (make-vector (+ NN 1) 0.0))
+  (define q (make-vector NN 0.0))
   (define b (rf p 0))
   (s! q 0 b)
   (define a (- (rf p 1) (* b u)))
@@ -193,15 +218,12 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
     (set! b a)
     (set! a (rf q i)))
   (list q a b))
-(define (QuadraticSyntheticDivision_imp NN u v p q* a* b*)
-  (match-define (list q a b)(QuadraticSyntheticDivision NN u v p))
-  (s! q* q NN)(s! a* a)(s! b* b))
 (module+ test
   (check-within (QuadraticSyntheticDivision 4 2.8 3.5 #(1. 2. 3. 4. 5.))
-                (list #(1.0 -0.8 1.74 1.928 0.0) 1.928 1.74)
+                (list #(1.0 -0.8 1.74 1.928) 1.928 1.74)
                 epsilon100)
   (check-within (QuadraticSyntheticDivision 5 3.345 6.482 #(0.428 3.62 2.6e-4 12. 0.005 1.23e-4))
-                (list #(0.428 2.18834 -10.0940333 31.5797215085 -40.199644595332494 0.0)
+                (list #(0.428 2.18834 -10.0940333 31.5797215085 -40.199644595332494)
                       -40.199644595332494 31.5797215085)
                 epsilon100))
 
@@ -241,31 +263,22 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
         (define a3 (+ (* e a) (* (+ g (/ h c)) b)))
         (define a7 (+ (* g d) (* h f) a))
         (list 'calcSC:div-by-c qk* c d e f g h a1 a3 a7)])]))
-(define (calcSC_imp N a b a1* a3* a7* c* d* e* f* g* h* K u v qk*)
-  (define out (calcSC N a b K u v))
-  (match out
-    [(list tFlag qk c d)
-     (s! qk* qk N)(s! c* c)(s! d* d)
-     tFlag]
-    [(list tFlag qk c d e f g h a1 a3 a7)
-     (s! qk* qk N)(s! c* c)(s! d* d)(s! e* e)(s! f* f)(s! g* g)(s! h* h)(s! a1* a1)(s! a3* a3)(s! a7* a7)
-     tFlag]))
 (module+ test
   (check-within (calcSC 4 2.3 4.6 #(1. 2. 3. 4. 5.) 1.8 9.2)
                 (list 'calcSC:div-by-c
-                      #(1.0 0.2 -6.56 13.968 0.0)
+                      #(1.0 0.2 -6.56 13.968)
                       13.968 -6.56 0.16466208476517755 -0.46964490263459335 0.2963917525773196 42.32
                       5.680183276059564 15.679123711340203 -19.519702176403204)
                 epsilon100)
   (check-within (calcSC 4 2.3 4.6 #(1. -10 35. -50. 24.) -6. 8.)
                 (list 'calcSC:div-by-d
-                      #(1.0 -4.0 3.0 0.0 0.0)
+                      #(1.0 -4.0 3.0 0.0)
                       0.0 3.0 0.7666666666666666 0.0 -27.6 36.8
                       -2.3 37.03 23.0)
                 epsilon100)
   (check-within (calcSC 5 2.3 4.6 #(1. -10 35. -50. 24. 0) -6. 8.)
                 (list 'calcSC:almost-factor
-                      #(1.0 -4.0 3.0 0.0 0.0 0.0)
+                      #(1.0 -4.0 3.0 0.0 0.0)
                       0.0 0.0)
                 epsilon100))
 
@@ -298,16 +311,6 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
         (for ([i (in-range 2 N)])
           (s! K i (+ (* a3 (rf qk (- i 2))) (* -1 a7 (rf qp (- i 1))))))
         (list K a3 a7)])]))
-(define (nextK_imp N tFlag a b a1 a3* a7* K* qk qp)
-  (match-define (list K a3 a7)
-    (nextK N (if (number? tFlag)
-                 (case tFlag
-                   [(1) 'calcSC:div-by-c]
-                   [(2) 'calcSC:div-by-d]
-                   [(3) 'calcSC:almost-factor])
-                 tFlag)
-           a b a1 (rf a3*) (rf a7*) qk qp))
-  (s! a3* a3)(s! a7* a7)(s! K* K N))
 (module+ test
   (check-within (nextK 4 'calcSC:div-by-c 8. 9. 10. 6. 7. #(11. 12. 13. 14. 15.) #(16. 17. 18. 19. 20.))
                 (list #(16.0 5.8 12.7 13.6 0.0) .6 .7)
@@ -331,39 +334,30 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
        (cond
          [(not (equal? tFlag 'calcSC:div-by-d))
           (label newest-type2)
-          (values (+ a (* u b) (* h f))
-                  (+ c (* (+ u (* v f)) d)))]
+          (values (dd+ (dd+ a (dd* u b)) (dd* h f))
+                  (dd+ c (dd* (dd+ u (dd* v f)) d)))]
          [else
           (label newest-type1)
-          (values (+ (* (+ a g) f) h)
-                  (+ (* (+ f u) c) (* v d)))]))
-     (define b1 (- (/ (rf K (- N 1))(rf p N))))
-     (define b2 (- (/ (+ (rf K (- N 2)) (* b1 (rf p (- N 1))))
-                      (rf p N))))
-     (define c1 (* v b2 a1))
-     (define c2 (* b1 a7))
-     (define c3 (* b1 b1 a3))
-     (define c4 (+ (- (+ c2 c3)) c1))
-     (define temp (+ (- c4) a5 (* b1 a4)))
+          (values (dd+ (dd* (dd+ a g) f) h)
+                  (dd+ (dd* (dd+ f u) c) (dd* v d)))]))
+
+     (define b1 (dd* -1.0 (dd/ (rf K (- N 1))(rf p N))))
+     (define b2 (dd* -1.0 (dd/ (dd+ (rf K (- N 2)) (dd* b1 (rf p (- N 1)))) (rf p N))))
+     (define c1 (dd* (dd* v b2) a1))
+     (define c2 (dd* b1 a7))
+     (define c3 (dd* (dd* b1 b1) a3))
+     (define c4 (dd+ (dd* -1.0 (dd+ c2 c3)) c1))
+     (define temp (dd+ (dd- a5 c4) (dd* b1 a4)))
      (cond
-       [(= temp 0.0)
+       [(= (dd->fl temp) 0.0)
         (label newest-temp0)
         (list 0.0 0.0)]
        ;!!!it temp ≈ 0.0 these values blow up. Is this a good idea?
        [else
         (label newest-normal)
-        (list (+ (- (/ (+ (* u (+ c3 c2)) (* v (+ (* b1 a1)(* b2 a7)))) temp)) u)
-              (* v (+ 1.0 (/ c4 temp))))])]))
-(define (newest_imp tFlag uu* vv* a a1 a3 a7 b c d f g h u v K N p)
-  (match-define (list uu vv)
-    (newest (if (number? tFlag)
-                (case tFlag
-                  [(1) 'calcSC:div-by-c]
-                  [(2) 'calcSC:div-by-d]
-                  [(3) 'calcSC:almost-factor])
-                tFlag)
-            a a1 a3 a7 b c d f g h u v K N p))
-  (s! uu* uu)(s! vv* vv))
+        (let ();([a4 (dd->fl a4)][a5 (dd->fl a5)][b1 (dd->fl b1)][b2 (dd->fl b2)][c1 (dd->fl c1)][c2 (dd->fl c2)][c3 (dd->fl c3)][c4 (dd->fl c4)][temp (dd->fl temp)])
+          (list (dd->fl (dd+ (dd* -1.0 (dd/ (dd+ (dd* u (dd+ c3 c2)) (dd* v (dd+ (dd* b1 a1)(dd* b2 a7)))) temp)) u))
+                (dd->fl (dd* v (dd+ 1.0 (dd/ c4 temp))))))])]))
 (module+ test
   ;tflag=3
   (check-within (newest 'calcSC:almost-factor 1. 2. 3. 4. 5. 6. 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
@@ -379,24 +373,29 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                 '(0. 0.) epsilon100)
   ;tflag=1 & temp!=0
   (check-within (newest 'calcSC:div-by-c 1. 2. 3. 4. 5. 6. 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
-                '(11.047985250849212 12.029700344736144) epsilon100))
+                '(11.047985250849212 12.029700344736144) epsilon100)
+  ;general accuracy
+  (check-within (newest 'calcSC:div-by-c 4.2070203373260126e+029 -1.2702606492846791e+028 -4.8274289306750895e+031 1.2166940450248765e+029 -5.2749842363542267e+027 -5.5170988810118383e+027 -9.7406057385308503e+025 0.017655303899038365 -539.9094138852181 -1.9916002499454986e+031 7.080387980931846 3775.5567802833493
+                        #(765.85527498437887 569.21989433594013 -70.015121432447586 -702.31273591596982 -9385.9870113488287 7161.0962876975536 -6.3514328002929688 2149.7078857421875 2603.109375 -6064. -80480. 4108288. 128712704. -11601444864. -569620037632. -573.11145390041679)
+                        15 #(765.85527498437887 -1347.293632350993 -2161.1901804835061 -7837.7065086597486 -3083.5325907341339 2512.6246767498906 5888.8148218838123 -224.71114833786896 4321.6465771244393 -4104.5415694069588 -358.02596267509489 -5940.1714091583599 -2813.1556404590783 -1218.7896752219331 -92.316085769292613 13.465814510071247 ))
+                '(3.7978598044219325e-10 -5.868394095550277e-11) epsilon100))
 (define (calcSC->nextK N a b K u v qp)
-  (define out (calcSC N a b K u v))
-  (match out
-    [(list tFlag qk c d)
-     (nextK N tFlag a b 0.0 0.0 0.0 qk qp)]
-    [(list tFlag qk c d e f g h a1 a3 a7)
-     (nextK N tFlag a b a1 a3 a7 qk qp)]))
-(define (calcSC->nextK_imp N a b K* u v qp)
-  (match-define (list K _ _)(calcSC->nextK N a b K* u v qp))
-  (s! K* K N))
+  (match-define (list K* _ _)
+    (match (calcSC N a b K u v)
+      [(list tFlag qk c d)
+       (nextK N tFlag a b 0.0 0.0 0.0 qk qp)]
+      [(list tFlag qk c d e f g h a1 a3 a7)
+       (nextK N tFlag a b a1 a3 a7 qk qp)]))
+  K*)
 (define (calcSC->newest N a b K u v p)
-  (define out (calcSC N a b K u v))
-  (match out
+  (match (calcSC N a b K u v)
     [(list tFlag qk c d)
-     (newest tFlag a 0.0 0.0 0.0 b 0.0 0.0 0.0 0.0 0.0 u v K N p)]
+     (cons tFlag (newest tFlag a 0.0 0.0 0.0 b 0.0 0.0 0.0 0.0 0.0 u v K N p))]
     [(list tFlag qk c d e f g h a1 a3 a7)
-     (newest tFlag a a1 a3 a7 b c d f g h u v K N p)]))
+     (cons tFlag (newest tFlag a a1 a3 a7 b c d f g h u v K N p))]))
+(define (calcSC->K+newest N a b K u v p qp)
+  (define K+ (calcSC->nextK N a b K u v qp))
+  (cons K+ (calcSC->newest N a b K+ u v p)))
 
 
 ; Variable - shift H - polynomial iteration for a real zero
@@ -457,10 +456,6 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                      (+ (* k s) (rf K* i))))
        (define t* (if (> (abs kv*) (* (abs (rf K* (- N 1))) epsilon10)) (- (/ pv kv*)) 0))
        (loop (+ j 1) qp* K* qk* (+ s t*) mp t*)])))
-(define (RealIT_imp iFlag* NZ* sss* N p NN qp* szr* szi* K* qk*)
-  (match-define (list iFlag NZ qp K qk sss szr szi)(RealIT (rf sss*)N(rf p)NN(rf K*)))
-  (s! iFlag* (case iFlag[(RealIT:normal)0][(RealIT:zero-cluster)1]))
-  (s! NZ* NZ)(s! sss* sss)(s! szr* szr)(s! szi* szi)(s! qp* qp NN)(s! K* K N)(s! qk* qk N))
 (module+ test
   ;break small mp = zero found
  (check-within (RealIT 0.2 4 #(1. 2. 3. 4. -5.) 5 #(1. 2. 3. 4. 5.))
@@ -499,45 +494,40 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
 ; Variable - shift K - polynomial iteration for a quadratic
 ; factor converges only if the zeros are equimodular or nearly so.
 (define (QuadIT N uu vv NN p K)
-  ;return (list NZ qp K qk szr szi lzr lzi a b c d e f g h a1 a3 a7)
-  (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)
-           (a* *)(b* *)(c* *)(d* *)(e* *)(f* *)(g* *)(h* *)(a1* *)(a3* *)(a7* *)
-           (qp* NN *)(K* NN *)(qk* NN *))
-  (s! K* K)
   (let loop ([j 0][omp 0][relstp 0][tried? #f]
-             ;uu and vv are coefficients of the starting quadratic
-             [u uu][v vv]
-             [a (rf a*)][b (rf b*)][qp (rf qp*)])
-    (Quad 1. u v szr* szi* lzr* lzi*)
+                  ;uu and vv are coefficients of the starting quadratic
+                  [u uu][v vv]
+                  [qp (make-vector NN 0.0)][K K])
+    (match-define (list szr szi lzr lzi)(Quad 1. u v))
     (cond
-      [(> (abs (- (abs (rf szr*))(abs (rf lzr*)))) (* 0.01 (abs (rf lzr*))))
+      [(> (abs (- (abs szr)(abs lzr))) (* 0.01 (abs lzr)))
        ;Return if the roots of the quadratic are real and not close
        ;to multiple or nearly equal and of opposite sign
        (label QuadIT-go-linear)
-       (list 0 qp K* qk* (rf szr*)(rf szi*)(rf lzr*)(rf lzi*) a b (rf c*)(rf d*)(rf e*)(rf f*)(rf g*)(rf h*)(rf a1*)(rf a3*)(rf a7*))]
+       (list 0 qp K szr szi lzr lzi)]
       [else
        ;Evaluate polynomial by quadratic synthetic division
        (match-define (list qp a b)(QuadraticSyntheticDivision NN u v p))
-       (define mp (+ (abs (- a (* (rf szr*) b))) (abs (* (rf szi*) b))))
+       (define mp (+ (abs (- a (* szr b))) (abs (* szi b))))
        ;Compute a rigorous bound on the rounding error in evaluating p
        (define zm (sqrt (abs v)))
-       (define t (- (* (rf szr*) b)))
+       (define t (- (* szr b)))
        (define e0 (for/fold ([e0 (* 2 (abs (rf qp 0)))])
-                                  ([i (in-range 1 N)])
-                          (+ (* e0 zm) (abs (rf qp i)))))
+                            ([i (in-range 1 N)])
+                    (+ (* e0 zm) (abs (rf qp i)))))
        (define ee (* (+ (* 9 (+ (* e0 zm) (abs (+ a t))))(* 2 (abs t))(* -7 (+ (abs (+ a t))(* zm (abs b))))) epsilon.0))
        (cond
          [(<= mp (* 20 ee))
           ;Iteration has converged sufficiently if the polynomial
           ;value is less than 20 times this bound
           (label QuadIT-converged)
-          (list 2 qp K* qk* (rf szr*)(rf szi*)(rf lzr*)(rf lzi*) a b (rf c*)(rf d*)(rf e*)(rf f*)(rf g*)(rf h*)(rf a1*)(rf a3*)(rf a7*))]
-       ;Stop iteration after 20 steps
+          (list 2 qp K szr szi lzr lzi)]
+         ;Stop iteration after 20 steps
          [(> j 20)
           (label QuadIT-maxiter)
-          (list 0 qp K* qk* (rf szr*)(rf szi*)(rf lzr*)(rf lzi*) a b (rf c*)(rf d*)(rf e*)(rf f*)(rf g*)(rf h*)(rf a1*)(rf a3*)(rf a7*))]
+          (list 0 qp K szr szi lzr lzi)]
          [else
-          (define-values (j+ tried?+ u+ v+ a+ b+ qp+)
+          (define-values (j+ tried?+ u+ v+ a+ b+ qp+ K+)
             (cond
               [(and (>= j 2)
                     (<= relstp 0.01) (>= mp omp) (not tried?))
@@ -548,282 +538,195 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
                (define u+ (- u (* u relstp+)))
                (define v+ (+ v (* v relstp+)))
                (match-define (list qp+ a+ b+)(QuadraticSyntheticDivision NN u+ v+ p))
-               (for ([i (in-range 5)]) (calcSC->nextK_imp N a+ b+ K* u+ v+ qp+))
-               (values 0 #t u+ v+ a+ b+ qp+)]
-              [else (values j tried? u v a b qp)]))
+               (define K+
+                 (for/fold ([K+ K])
+                           ([i (in-range 5)])
+                   (calcSC->nextK N a+ b+ K+ u+ v+ qp+)))
+               (values 0 #t u+ v+ a+ b+ qp+ K+)]
+              [else
+               (label QuadIT-norelstp)
+               (values j tried? u v a b qp K)]))
           ;Calculate next K polynomial and new u and v
-          (calcSC->nextK_imp N a+ b+ K* u+ v+ qp+)
-          ;(match-define (list ui vi)(calcSC->newest N (rf a*) (rf b*) K* u v p))
-          (define tFlag (calcSC_imp N a+ b+ a1* a3* a7* c* d* e* f* g* h* (rf K*) u+ v+ qk*))
-          (match-define (list ui vi)(newest tFlag a+ (rf a1*) (rf a3*) (rf a7*) b+ (rf c*) (rf d*) (rf f*) (rf g*) (rf h*) u+ v+ (rf K*) N p))
+          (match-define (list Ki _ ui vi)(calcSC->K+newest N a+ b+ K+ u+ v+ p qp+))
           (cond
             [(isZero vi)
              ;If vi is zero, the iteration is not converging
              (label QuadIT-nonconverging)
-             (list 0 qp+ K* qk* (rf szr*)(rf szi*)(rf lzr*)(rf lzi*) a+ b+ (rf c*)(rf d*)(rf e*)(rf f*)(rf g*)(rf h*)(rf a1*)(rf a3*)(rf a7*))]
+             (list 0 qp+ Ki szr szi lzr lzi)]
             [else
              (label QuadIT-normal)
              (loop (+ j+ 1) mp (abs (/ (- vi v+)vi)) tried?+
-                   ui vi
-                   a+ b+ qp+)])])])))
-(define (QuadIT_imp N NZ* uu vv szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
-  (match-define (list NZ qp K qk szr szi lzr lzi a b c d e f g h a1 a3 a7)
-    (QuadIT N uu vv NN p (rf K*)))
-  (s! NZ* NZ)(s! qp* qp NN)(s! K* K N)(s! qk* qk N)
-  (s! szr* szr)(s! szi* szi)(s! lzr* lzr)(s! lzi* lzi)
-  ;it seems the info on the next line is redundant... but not all paths tested so far
-  (s! a* a)(s! b* b)(s! c* c)(s! d* d)(s! e* e)(s! f* f)(s! g* g)(s! h* h)(s! a1* a1)(s! a3* a3)(s! a7* a7)
-  )
+                   ui vi qp+ Ki)])])])))
 (module+ test
   ;QuadIT-go-linear
-  (let ()
-    (define p #(1. 2. 3. 4. 5.))
-    (define qp* (vector 1. 2. 3. 4. 5.))
-    (define K* (vector 1. 2. 3. 4. 5.))
-    (define qk* (vector 1. 2. 3. 4. 5.))
-    (define NN (vector-length p))
-    (define N (- NN 1))
-    (prepare (NZ* *)(szr* *)(szi* *)(lzr* *)(lzi* *)
-             (a* *)(b* *)(c* *)(d* *)(e* *)(f* *)(g* *)(h* *)
-             (a1* *)(a3* *)(a7* *))
-    (QuadIT_imp N NZ* 6. 7. szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
-    ;(check-within qp* #(1. 2. 3. 4. 5.) epsilon100);not important for other calculations...i think
-    (check-within K* #(1. 2. 3. 4. 5.) epsilon100)
-    ;(check-within qk* #(1. 2. 3. 4. 5.) epsilon100);not important for other calculations...i think
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(0 -1.585786437626905 0 -4.414213562373095 0) epsilon100)
-    (check-within (map rf (list a* b* c* d* e* f* g* h* a1* a3* a7*))
-                  '(undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined undefined)
-                  epsilon100))
+  (check-within (QuadIT 4 6. 7. 5 #(1. 2. 3. 4. 5.) #(1. 2. 3. 4. 5.))
+                '(0 #(0.0 0.0 0.0 0.0 0.0)
+                    #(1. 2. 3. 4. 5.)
+                    -1.585786437626905 0 -4.414213562373095 0) epsilon100)
   ;QuadIT-converged
-  (let ()
-    (define p #(1. 2. 3. 4. 5.))
-    (define qp* (vector 1. 2. 3. 4. 5.))
-    (define K* (vector 1. 2. 3. 4. 5.))
-    (define qk* (vector 1. 2. 3. 4. 5.))
-    (define NN (vector-length p))
-    (define N (- NN 1))
-    (prepare (NZ* *)(szr* *)(szi* *)(lzr* *)(lzi* *)
-             (a* *)(b* *)(c* *)(d* *)(e* *)(f* *)(g* *)(h* *)
-             (a1* *)(a3* *)(a7* *))
-    (QuadIT_imp N NZ* -0.575630959115296 0.0828377502729989 szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
-    (check-within qp* #(1.0 2.575630959115296 2.3944555573388273 0. 0.) epsilon100)
-    (check-within K* #(1.0 2.7141314657388516 2.7511817500546467 0.3316333077843976 5.0) epsilon100)
-    (check-within qk* #(1.0 3.2897624433408463 2.556713395073429 -5.066185467027889 5.0) epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(2 0.287815479557648 1.4160930801719076 0.287815479557648 -1.4160930801719076) epsilon100)
-    (check-within (map rf (list a* b* c* d* e* f* g* h* a1* a3* a7*))
-                    '(0. 0. -5.066185467027889 2.556713395073429 8.83349690503021e-08 -0.5046624154826573 -5.0848344590867324e-08 -9.995370529786954e-07 -7.045165712076444e-07 -1.096316891718955e-13 -7.309719664513362e-08)
-                    epsilon100);not important for other calculations...i think
-    )
+  (check-within (QuadIT 4 -0.575630959115296 0.0828377502729989 5 #(1. 2. 3. 4. 5.) #(1. 2. 3. 4. 5.))
+                '(2 #(1.0 2.575630959115296 2.3944555573388273 0. 0.)
+                    #(1.0 2.7141314657388516 2.7511817500546467 0.3316333077843976 0.0)
+                    0.287815479557648 1.4160930801719076 0.287815479557648 -1.4160930801719076) epsilon100)
   ;QuadIT-maxiter
   ;[TODO ???]
   ;QuadIT-relstp
   (check-within (QuadIT 9 14.737906787890154 56.6995805579966 10
                         #(-74.43388870038298 -48.684338183687615 82.95039531162064 2.082613677062014 60.82122424869209 -46.15017147716964 61.0180453610964 47.02754709444238 -5.330451975747479 91.51704177156668)
                         #(38.515673952936254 7.252656554000609 -84.42246656861926 31.693388752691646 -27.265410421231138 -35.244767584584565 -97.79006609235279 8.92096535665003 -60.693225828975194 -16.564537967886736))
-                '(2 #(-74.43388870038298    28.5525675415266  134.72025177002524 -168.93474867929848   88.79349933216068  46.45222659669343 -84.28416458872897   83.6875414818494   -4.263256414560601e-14 0.0 0.0)
-                    #(-74.43388870038298 -1291.101631406862   640.9347772344079  2219.5491668571904 -2906.28648822974   1620.6910078684268  739.2772124821581 -1410.6042877693205 1483.7141716555477     -16.564537967886736)
-                    #(-74.43388870038298 -1213.8647256817187 1981.9086377214949  1490.4356655462275 -6620.1774535442755 6860.294452068977   860.1761575225632 -9805.29130225142  10717.60014995853         0.0)
-                    -0.5188289035664532 0.907949839624714 -0.5188289035664532 -0.907949839624714
-                    0.0 -4.263256414560601e-14 10717.60014995853 -9805.29130225142 1.4951655107757719e-13 -0.9148775066300042 1.5514701652109156e-13 -1.0600397392729366e-09 4.967025159902387e-10 1.8507724128489367e-22 1.0510034321805513e-09)
-                epsilon100);NOT COMPLETELY IN LINE WITH C-impl! roots are exact, but K*/qk* not -> (discarded anyway for the next round, but still...)
+                '(2 #(-74.43388870038298    28.5525675415266  134.72025177002524 -168.93474867929848   88.79349933216068  46.45222659669343 -84.28416458872897   83.6875414818494   -4.263256414560601e-14 0.0)
+                    #(-74.43388870038298 -1291.101631406862   640.9347772344079  2219.5491668571904 -2906.28648822974   1620.6910078684268  739.2772124821581 -1410.6042877693205 1483.7141716555477       0.0)
+                    -0.5188289035664532 0.907949839624714 -0.5188289035664532 -0.907949839624714)
+                epsilon100)
   ;QuadIT-nonconverging
-  ;To Be Checke Akiti!!
   (check-within (QuadIT 15 7.080387980931846 3775.5567802833493 16
                         #(765.8552749843789 -1347.293632350993 -2161.190180483506 -7837.706508659749 -3083.532590734134 2512.6246767498906 5888.814821883812 -224.71114833786896 4321.646577124439 -4104.541569406959 -358.0259626750949 -5940.17140915836 -2813.1556404590783 -1218.789675221933 -92.31608576929261 13.465814510071247)
                         #(569.9471955954955 426.1973931512889 -39.26465304820874 -525.558286377151 -6935.288424258491 5283.823600793081 -1.6306656043934709 1584.535288608834 1907.3886808609604 -3739.1601002469033 -430.3641207148028 3278.5379900289245 -1171.8752324055004 1657.6923655682594 -2854.6807003064246 -573.1114539004168))
-                '(0 #(765.8552749843789 -1347.2936322007815 -2161.190180771193 -7837.7065090424085 -3083.5325922052557 2512.62467638493 5888.814822470982 -224.71114725974803 4321.646576900171 -4104.541568552454 -358.0259636123816 -5940.171409102984 -2813.1556416132016 -1218.7896755919267 -92.31608592225949 13.465814529259115 0.0)
-                    #(765.8552749843789 -1235.5810851818474 -2357.715044087775 -8152.951526701866 -4226.790575157413 2062.8408974624554 6255.322322625176 634.2690337473058 4288.868772236702 -3474.158567758887 -956.7406398036304 -5992.395365236808 -3679.6270225980984 -1629.1345512998803 -270.0965405173288 -573.1114539004168)
-                    #(765.8552749843789 -1235.581085031636 -2357.715044353551 -8152.95152712649 -4226.790576684351 2062.8408968829076 6255.32232315911 634.269034911075 4288.868772169695 -3474.1585669370957 -956.7406406162736 -5992.395365318152 -3679.6270237441445 -1629.1345518382218 -270.0965407242653 0.0)
-                    9.806777612197948e-11 5.531679987906852e-06 9.806777612197948e-11 -5.531679987906852e-06
-                    13.465814529259115 -92.31608592225949 -270.0965407242653 -1629.1345518382218 -0.008265624539154894 0.16579142614064865 1.810646649336313e-08 -2.824824547799034e-09 -28.771030070033174 -0.11130336732248461 2.2325165894853867)
+                '(0 #(765.8552749843789 -1347.2936322007815 -2161.190180771193 -7837.7065090424085 -3083.5325922052557 2512.62467638493 5888.814822470982 -224.71114725974803 4321.646576900171 -4104.541568552454 -358.0259636123816 -5940.171409102984 -2813.1556416132016 -1218.7896755919267 -92.31608592225949 13.465814529259115)
+                    #(765.8552749843789 -1235.5810851818474 -2357.715044087775 -8152.951526701866 -4226.790575157413 2062.8408974624554 6255.322322625176 634.2690337473058 4288.868772236702 -3474.158567758887 -956.7406398036304 -5992.395365236808 -3679.6270225980984 -1629.1345512998803 -270.0965405173288 0.0)
+                    9.806777612197948e-11 5.531679987906852e-06 9.806777612197948e-11 -5.531679987906852e-06)
                 epsilon100)
   ;QuadIT-normal [done in break converged]
   )
 (define (FixedShift L2 sr bnd K N p NN)
-  (call/ec
-   (λ (return)
-     (prepare (a* *)(b* *)(szr* *)(lzr* *)(szi* *)(lzi* *)
-              (qk* NN *)(qp* NN *)(svk* NN *)(K* NN *)
-              (iFlag* 1)(NZ* 0))
-     (s! K* K)
-     (define betav 0.25)
-     (define betas 0.25)
-     (define u (* -2 sr))
-     (define v bnd)
-     ;Evaluate polynomial by synthetic division
-     (QuadraticSyntheticDivision_imp NN u v p qp* a* b*)
-     (define a1* (box 'undefined))(define a3* (box 'undefined))(define a7* (box 'undefined))(define c* (box 'undefined))(define d* (box 'undefined))(define e* (box 'undefined))(define f* (box 'undefined))(define g* (box 'undefined))(define h* (box 'undefined))
-     (define tFlag (calcSC_imp N (rf a*) (rf b*) a1* a3* a7* c* d* e* f* g* h* (rf K*) u v qk*))
-     (let loop ([j 0]
-                [ovv v][oss sr][otv 0][ots 0])
+  (prepare (szr* *)(lzr* *)(szi* *)(lzi* *))
+  (define u (* -2 sr))
+  (define v bnd)
+  ;Evaluate polynomial by synthetic division
+  (match-define (list qp a b)(QuadraticSyntheticDivision NN u v p))
+  ;fixed shifts: do a fixed shift, if quadratic or linear convergence is detected try to start stage 3.
+  ;If unsuccessful continue the fixed shifts
+  (let loop ([j 0]
+             [vv_old v][ss_old sr][tv_old 0][ts_old 0]
+             [quadConvergingLimit 0.25][linConvergingLimit 0.25]
+             [K_old K])
+    (cond
+      [(<= L2 j)
+       (label FixedShift-maxiter)
+       (list 0 K_old qp (rf szr*) (rf szi*) (rf lzr*) (rf lzi*))]
+      [else
+       ;Calculate next K polynomial and estimate vv
+       (match-define (list K tFlag uu vv)(calcSC->K+newest N a b K_old u v p qp))
+       ;Estimate s
+       (define ss (if (not (= (rf K (- N 1)) 0)) (- (/ (rf p N)(rf K (- N 1)))) 0.0))
        (cond
-         [(< j L2)
-          ;Calculate next K polynomial and estimate v
-          (nextK_imp N tFlag (rf a*) (rf b*) (rf a1*) a3* a7* K* (rf qk*) (rf qp*))
-          (define ui* (box 'undefined))(define vi* (box 'undefined))
-          (set! tFlag (calcSC_imp N (rf a*) (rf b*) a1* a3* a7* c* d* e* f* g* h* (rf K*) u v qk*))
-          (newest_imp tFlag ui* vi* (rf a*) (rf a1*) (rf a3*) (rf a7*) (rf b*) (rf c*) (rf d*) (rf f*) (rf g*) (rf h*) u v (rf K*) N p)
-          (define vv (rf vi*))
-          ;Estimate s
-          (define ss (if (not (= (rf K* (- N 1)) 0)) (- (/ (rf p N)(rf K* (- N 1)))) 0.0))
-          (define ts 1.0)
-          (define tv 1.0)
-          (cond
-            [(and (not (= j 0)) (not (equal? tFlag 'calcSC:almost-factor)))
-             ; Compute relative measures of convergence of s and v sequences
-             (set! tv (if (not (= vv 0.0)) (abs (/ (- vv ovv) vv)) tv))
-             (set! ts (if (not (= ss 0.0)) (abs (/ (- ss oss) ss)) ts))
-             ;If decreasing, multiply the two most recent convergence measures
-             (define tvv (if (< tv otv) (* tv otv) 1))
-             (define tss (if (< ts ots) (* ts ots) 1))
-             ;Compare with convergence criteria
-             (define vpass (< tvv betav))
-             (define spass (< tss betas))
-             (cond
-               [(or spass vpass)
-                ;At least one sequence has passed the convergence test.
-                ;Store variables before iterating
-                (for ([i (in-range N)])(s! svk* i (rf K* i)))
-                (define s ss)
-                ;Choose iteration according to the fastest converging sequence
-                (define stry #f)
-                (define vtry #f)
-                (define fflag #t)
-                (let loop2 ()
-                  (define continue #f)
-                  (s! iFlag* 1);assume each loop that RealIT will be tried unless set 0 below
-                  ;here? or only at top?
-                  (cond
-                    [(or (not fflag)
-                         (not spass)
-                         (and vpass (<= tvv tss)))
-                     (QuadIT_imp N NZ* (rf ui*) (rf vi*) szr* szi* lzr* lzi* qp* NN a* b* p qk* a1* a3* a7* c* d* e* f* g* h* K*)
-                     (when (> (rf NZ*) 0)(return (list (rf NZ*) K* qp* (rf lzi*) (rf lzr*) (rf szi*) (rf szr*))))
-                     ;Quadratic iteration has failed. Flag that it has been
-                     ;tried and decrease the convergence criterion
-                     (set! vtry #t)
-                     (set! betav (* betav 0.25))
-                     ;Try linear iteration if it has not been tried and the s sequence is converging
-                     (cond
-                       [(or stry (not spass));linear already tried || not converging
-                        (s! iFlag* 0)]
-                       [else ;reset K for the linear try
-                        (for ([i (in-range N)])(s! K* i (rf svk* i)))])]
-                    ;Do nothing. Provides a quick short circuit to the linear iteration
-                    [fflag (set! fflag #f)]
-                    [else 'nada])
-                  (when (not (= (rf iFlag*) 0))
-                    (define sss* (box s))
-                    (RealIT_imp iFlag* NZ* sss* N p NN qp* szr* szi* K* qk*)
-                    (set! s (rf sss*))
-                    (when (> (rf NZ*) 0)(return (list (rf NZ*) K* qp* (rf lzi*) (rf lzr*) (rf szi*) (rf szr*))))
-                    ;Linear iteration has failed. Flag that it has been
-                    ;tried and decrease the convergence criterion
-                    (set! stry #t)
-                    (set! betas (* betas 0.25))
-                    (when (not (= (rf iFlag*) 0))
-                      (println (list 'FixedShift-9 L2 sr v K* N p NN qp* lzi* lzr* szi* szr*))
-                      ;If linear iteration signals an almost double real zero,
-                      ;attempt quadratic iteration
-                      (s! ui* (- (+ s s)))
-                      (s! vi* (* s s))
-                      (set! continue #t)))
-                  (cond
-                    [continue (loop2)]
-                    [else
-                     ;Restore variables
-                     (for ([i (in-range N)])(s! K* i (rf svk* i)))
-                     ;Try quadratic iteration if it has not been tried
-                     ;and the v sequence is converging
-                     (unless (or (not vpass) vtry) (loop2));was break statement
-                     ]))
-                ;Re-compute qp and scalar values to continue the second stage
-                (QuadraticSyntheticDivision_imp NN u v p qp* a* b*)
-                (set! tFlag (calcSC_imp N (rf a*) (rf b*) a1* a3* a7* c* d* e* f* g* h* (rf K*) u v qk*))
-                (loop (+ j 1) vv ss tv ts)]
-               [else (loop (+ j 1) vv ss tv ts)])]
-            [else (loop (+ j 1) vv ss tv ts)])]
+         [(or (= j 0) (equal? tFlag 'calcSC:almost-factor))
+          (label FixedShift-pass0-or-factor)
+          (loop (+ j 1) vv ss 1.0 1.0 quadConvergingLimit linConvergingLimit K)]
          [else
-          (label FixedShift-maxiter)
-          (list (rf NZ*) K* qp* (rf lzi*) (rf lzr*) (rf szi*) (rf szr*))])))))
-(define (FixedShift_imp L2 sr bnd K* N p NN qp* lzi* lzr* szi* szr*)
-  (match-define (list NZ K qp lzi lzr szi szr)(FixedShift L2 sr bnd (rf K*) N p NN))
-  (s! K* K NN)(s! qp* qp NN)
-  (s! lzi* lzi)(s! lzr* lzr)(s! szi* szi)(s! szr* szr)
-  NZ)
+          ; Compute relative measures of convergence of s and v sequences
+          (define tv (if (not (= vv 0.0)) (abs (/ (- vv vv_old) vv)) 1.0))
+          (define ts (if (not (= ss 0.0)) (abs (/ (- ss ss_old) ss)) 1.0))
+          ;If decreasing, multiply the two most recent convergence measures
+          (define tvv (if (< tv tv_old) (* tv tv_old) 1))
+          (define tss (if (< ts ts_old) (* ts ts_old) 1))
+          ;Compare with convergence criteria
+          (define quadConverging? (< tvv quadConvergingLimit))
+          (define linConverging? (< tss linConvergingLimit))
+          (cond
+            [(or linConverging? quadConverging?)
+             ;At least one sequence has passed the convergence test.
+             (define (tryQuad K ui vi triedLin? quadConvergingLimit linConvergingLimit)
+               (match-define (list NZ qp K+ szr szi lzr lzi)(QuadIT N ui vi NN p K))
+               (cond
+                 [(> NZ 0)
+                  (label FixedShift-QuadConverged)
+                  (list NZ K+ qp szr szi lzr lzi)]
+                 [else
+                  ;Quadratic iteration has failed, decrease the convergence criterion
+                  (define  qCL (* quadConvergingLimit 0.25))
+                  (s! szr* szr)(s! lzr* lzr)(s! szi* szi)(s! lzi* lzi);save results to return in case of maxiter
+                  (cond
+                    [(and (not triedLin?) linConverging?)
+                     (label FixedShift-LinSecond)
+                     (tryLin ss #t qCL linConvergingLimit)]
+                    [else
+                     (label FixedShift-QuadOver)
+                     (loop (+ j 1) vv ss tv ts qCL linConvergingLimit K)])]))
+             (define (tryLin sss triedQuad? quadConvergingLimit linConvergingLimit)
+               ;(RealIT_imp iFlag* NZ* sss* N p NN qp* szr* szi* K* qk*)
+               (match-define (list iFlag NZ qp K+ qk s szr szi)(RealIT sss N p NN K))
+               (cond
+                 [(> NZ 0)
+                  (label FixedShift-LinConverged)
+                  (list NZ K+ qp szr szi (rf lzr*) (rf lzi*))]
+                 [else
+                  ;Linear iteration has failed, decrease the convergence criterion
+                  (define lCL (* linConvergingLimit 0.25))
+                  (s! szi* szi)(s! szr* szr);save results to return in case of maxiter
+                  (cond
+                    [(equal? iFlag 'RealIT:zero-cluster)
+                     (label FixedShift-QuadSecondSpec)
+                     ;If linear iteration signals an almost double real zero, attempt quadratic iteration
+                     (tryQuad K+ (* -2 s) (* s s) #t quadConvergingLimit lCL)]
+                    [else
+                     (cond
+                       [(and (not triedQuad?) quadConverging?)
+                        (label FixedShift-QuadSecondNorm)
+                        (tryQuad K uu vv #t quadConvergingLimit lCL)]
+                       [else
+                        (label FixedShift-LinOver)
+                        (loop (+ j 1) vv ss tv ts quadConvergingLimit lCL K)])])]))
+             ;Choose iteration according to the fastest converging sequence, if it fails try the other one (if it is converging)
+             (cond
+               [(and linConverging? (or (not quadConverging?) (< tss tvv)))
+                (label FixedShift-LinFirst)
+                (tryLin ss #f quadConvergingLimit linConvergingLimit)]
+               [else
+                (label FixedShift-QuadFirst)
+                (tryQuad K uu vv #f quadConvergingLimit linConvergingLimit)])]
+            [else
+             (label FixedShift-nonconvergingpass)
+             (loop (+ j 1) vv ss tv ts quadConvergingLimit linConvergingLimit K)])])])))
 (module+ test
-  ; 1)!(j=0) & tFlag=3
-  ; 2)+>spass || vpass
-  ; 3)++>cond fflag && spass && (vpass || (tss<tvv))
-  ; 4)++>else->quaditOK
-  ; 5)++>else->stry && !spass
-  ; 6)++>else->else
-  ; 7)+>!(iFlag=0)
-  ; 8)++>!(NZ>0)
-  ; 9)++>!(iFlag=0)
-  ;10)+> !vpass || vtry
-  (let ();passing !1) 1) 2) & 4)
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
-    (define p #(1. 2. 3. 4. 5.))
-    (define NN (vector-length p))(define N (- NN 1))
-    (define qp* (vector 1. 2. 3. 4. 5.))
-    (define K* (vector 1. 2. 3. 4. 5.))
-    (s! NZ* (FixedShift_imp 5 1.0 2.0 K* N p NN qp* lzi* lzr* szi* szr*))
-    (check-within qp* #(1.0 2.575630959115296 2.394455557338827 0.0 0.0) epsilon100)
-    (check-within K* #(1.0 3.669100109842665 5.210828554789748 2.6182632847377154 5.0) epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(2 0.28781547955764797 1.4160930801719078 0.28781547955764797 -1.4160930801719078)
-                  epsilon100))
-  (let ();passing !1) 1) 2) 3) 7) & 8)
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
-    (define p #(1. 2. 3. 4. -5.))
-    (define NN (vector-length p))(define N (- NN 1))
-    (define qp* (vector 1. 2. 3. 4. 5.))
-    (define K* (vector 1. 2. 3. 4. 5.))
-    (s! NZ* (FixedShift_imp 5 1.0 2.0 K* N p NN qp* lzi* lzr* szi* szr*))
-    (check-within qp* #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0) epsilon100)
-    (check-within K* #(1.0 2.684124319453068 4.8362747233736165 7.308613153816669 5.0) epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(1 0.6841243194530697 0 undefined undefined)
-                  epsilon100))
-  (let ();passing !1) 1) !2)
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
-    (define p  #(5.973052788152122 3.1198874346298604 4.732251119406017 3.6024342708537196 4.181120877543731))
-    (define NN (vector-length p))(define N (- NN 1))
-    (define qp* (vector 5.973052788152122 44.392007844469305 307.9627791918564 2105.483624570146 14371.728188895837))
-    (define K*  (vector 5.973052788152122 -7.411175697861289 -0.024070219044631358 -0.4006197810018648 1.397337061503462))
-    (s! NZ* (FixedShift_imp 5 3.4548598408258635 0.586936423108628 K* N p NN qp* lzi* lzr* szi* szr*))
-    (check-within qp* #(5.973052788152122 -4.285169564149636 5.5226517874526735 0.0 0.0) epsilon100)
-    (check-within K* #(5.973052788152122 -1.5301483105752052 3.546152726901954 2.5472775128829883 1.397337061503462) epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(2 -0.6198720538237862 0.6106098345570848 -0.6198720538237862 -0.6106098345570848)
-                  epsilon100))
-  (let ();passing ... !8) 10) ...
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
-    (define p  #(8.41755012535733 4.671578854715546 0.5931615068990723 0.7322427309831809 5.728464948833154))
-    (define NN (vector-length p))(define N (- NN 1))
-    (define qp* (vector 3.6476498420143426 2.721198761372208 6.567163943771762 9.983085919283766 9.941966838186865))
-    (define K*  (vector 8.401638613441222 9.708937329579836 0.33872763171218045 0.1468471881337965 0.32549909728202325))
-    (s! NZ* (FixedShift_imp 5 0.24442525134432416 9.30559289538379 K* N p NN qp* lzi* lzr* szi* szr*))
-    (check-within qp* #(8.41755012535733 13.252560535681688 8.27797623788355 4.689582056016661e-13 6.483702463810914e-14) epsilon100)
-    (check-within K* #(8.41755012535733 4.690864413054477 -5.201527218920869 -8.4197321153409 0.32549909728202325) epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(2 0.5097077863021263 0.6574273375997998 0.5097077863021263 -0.6574273375997998)
-                  epsilon100))
-  (let ();passing ... 5) ...
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
-    (define p  #(6.7460988725508955 5.98370659970934 6.157731644531755 4.907674864119937 3.8729258686230943))
-    (define NN (vector-length p))(define N (- NN 1))
-    (define qp* (vector 7.428443942944599 4.547128927848027 5.135593346367454 5.7702655368985685 7.307443236920097))
-    (define K*  (vector 8.877633271400752 0.038665127484674225 5.24238410415498 4.852226488120647 6.75060148912601))
-    (s! NZ* (FixedShift_imp 5 1.2246379011135278 9.917716291473479 K* N p NN qp* lzi* lzr* szi* szr*))
-    (check-within qp* #(6.7460988725508955 22.50676332767947 -5.62289224272052 -232.08003236777014 -508.788831588999) epsilon100)
-    (check-within K* #(6.7460988725508955 -2.497107022629141 19.869027988280223 5.097443105442949 6.75060148912601) epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '(0 0.10531206398918308 0 -1.1965964573712842 0)
-                  epsilon100))
+  ;passing pass0-or-factor QuadFirst QuadConverged
+  (check-within (FixedShift 5 1.0 2.0 #(1. 2. 3. 4. 5.) 4 #(1. 2. 3. 4. 5.) 5)
+                '(2 #(1.0 3.669100109842665 5.210828554789748 2.6182632847377154 0.)
+                    #(1.0 2.575630959115296 2.394455557338827 0.0 0.0)
+                    0.28781547955764797 1.4160930801719078 0.28781547955764797 -1.4160930801719078)
+                epsilon100)
+  ;passing pass0-or-factor LinFirst LinConverged
+  (check-within (FixedShift 5 1.0 2.0 #(1. 2. 3. 4. 0.) 4 #(1. 2. 3. 4. -5.) 5)
+                '(1 #(1.0 2.684124319453068 4.8362747233736165 7.308613153816669 0.)
+                    #(1.0 2.68412431945307 4.836274723373266 7.308613153815818 0.0)
+                    0.6841243194530697 0 undefined undefined)
+                epsilon100)
+  ;passing pass0-or-factor nonconvergingpass QuadFirst QuadConverged
+  (check-within (FixedShift 5 3.4548598408258635 0.586936423108628 #(5.973052788152122 -7.411175697861289 -0.024070219044631358 -0.4006197810018648 0.)
+                            4 #(5.973052788152122 3.1198874346298604 4.732251119406017 3.6024342708537196 4.181120877543731) 5)
+                '(2 #(5.973052788152122 -1.5301483105752052 3.546152726901954 2.5472775128829883 0.)
+                    #(5.973052788152122 -4.285169564149636 5.5226517874526735 0.0 0.0)
+                    -0.6198720538237862 0.6106098345570848 -0.6198720538237862 -0.6106098345570848)
+                epsilon100)
+  ;passing pass0-or-factor LinFirst LinOver LinFirst QuadSecondNorm QuadConverged
+  (check-within (FixedShift 5 0.24442525134432416 9.30559289538379 #(8.401638613441222 9.708937329579836 0.33872763171218045 0.1468471881337965 0.)
+                            4 #(8.41755012535733 4.671578854715546 0.5931615068990723 0.7322427309831809 5.728464948833154) 5)
+                '(2 #(8.41755012535733 4.690864413054477 -5.201527218920869 -8.4197321153409 0.)
+                    #(8.41755012535733 13.252560535681688 8.27797623788355 4.689582056016661e-13 6.483702463810914e-14)
+                    0.5097077863021263 0.6574273375997998 0.5097077863021263 -0.6574273375997998)
+                epsilon100)
+  ;passing pass0-or-factor LinFirst LinOver nonconvergingpass QuadFirst QuadOver nonconvergingpass maxiter
+  (check-within (FixedShift 5 1.2246379011135278 9.917716291473479 #(8.877633271400752 0.038665127484674225 5.24238410415498 4.852226488120647 0.)
+                            4 #(6.7460988725508955 5.98370659970934 6.157731644531755 4.907674864119937 3.8729258686230943) 5)
+                '(0 #(6.7460988725508955 -2.497107022629141 19.869027988280223 5.097443105442949 0.)
+                    #(6.7460988725508955 22.50676332767947 -5.62289224272052 -232.08003236777014 -508.788831588999)
+                    0.10531206398918308 0 -1.1965964573712842 0)
+                epsilon100)
+  ;passing ... linSecond ...
+  (check-within (FixedShift 11 62.62559015912069 72.73878188097541 #(-14.281125965172919 -30.810404431206194 43.2289725150043)
+                            2 #(61.52697196174651 36.82318279967228 -47.989940452833565) 3)
+                '(1 #(61.52697196174651 75.78460263823895 0.0)
+                    #(61.52697196174651 75.78460263823895 -7.105427357601002e-15)
+                    0.6332413020876496 0 -1.231729776672958 0)
+                epsilon100)
+  ;passing ... QuadSecondSpec
+  (check-within (FixedShift 18 26.907593802730446 1.2786560845469381 #(55.20898627198051 41.74299097679142 23.90535938840239 19.045011969600466 -21.305286565679026 1.629283218386334 -98.7351876071)
+                            6 #(-74.46775787726362 90.3506061511408 -41.6749987910501 -12.605712335088313 -3.9257546925351363 -66.56163578033919 -36.151837492264384) 7)
+                '(2 #(-74.46775787726362 157.12570041998669 -171.3494154928022 115.0730806685728 -75.98007826461728 -22.1391991665926 0.0)
+                    #(-74.46775787726362 172.36524977999846 -206.62332203773178 157.35777413703312 -108.18276080133784 -7.105427357601002e-14 4.973799150320701e-14)
+                    -0.5506721698539164 0.17588035331998092 -0.5506721698539164 -0.17588035331998092)
+                epsilon100)
+  
   #;(let ();looking for -> passing !7) 9)
     (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
     (define (rdm)(- (* 20 (random)) 10))
@@ -920,7 +823,7 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
      (s! zeroi* j 0)]
     [(= Degree 2)
      (define szr* (box 'undefined))(define szi* (box 'undefined))(define lzr* (box 'undefined))(define lzi* (box 'undefined))
-     (Quad (rf p 0) (rf p 1) (rf p 2) szr* szi* lzr* lzi*)
+     (Quad_imp (rf p 0) (rf p 1) (rf p 2) szr* szi* lzr* lzi*)
      (s! zeror* j (rf szr*))      (s! zeroi* j (rf szi*))
      (s! zeror* (+ j 1) (rf lzr*))(s! zeroi* (+ j 1) (rf lzi*))]))
 
@@ -990,7 +893,10 @@ based on the cpp translation fo TOMS/493 found at http://www.akiti.ca/PolyRootRe
          (define sr (* bnd xx))
          ;Second stage calculation fixed quadratic
          (define lzi* (box 'undefined))(define lzr* (box 'undefined))(define szi* (box 'undefined))(define szr* (box 'undefined))
-         (define NZ (FixedShift_imp (* 20 (+ iter 1)) sr bnd K* N (rf p*) (+ N 1) qp* lzi* lzr* szi* szr*))
+         (match-define (list NZ K qp szr szi lzr lzi)
+           (FixedShift (* 20 (+ iter 1)) sr bnd (rf K*) N (rf p*) (+ N 1)))
+         (s! K* K (+ N 1))(s! qp* qp (+ N 1))
+         (s! lzi* lzi)(s! lzr* lzr)(s! szi* szi)(s! szr* szr)
          (set! ok (not (= NZ 0)))
          (cond
            [ok
