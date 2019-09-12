@@ -5,7 +5,9 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
 |#
 
 (require math/flonum math/bigfloat
-         racket/match)
+         racket/math
+         racket/match
+         racket/vector)
 (require (for-syntax racket/base))
 (define (make-dd f1 f2)
   (λ (a b)
@@ -25,13 +27,14 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
 ;(define dd+ fl+)(define dd* fl*)(define dd/ fl/)(define dd- fl-)(define dd->fl values)
 ;(define dd+ (make-dd fl2+ fl+/error))(define dd* (make-dd fl2* fl*/error))(define dd/ (make-dd fl2/ fl//error))(define dd- (make-dd fl2- fl-/error))(define (dd->fl a)(car a));
 ;(define dd+ (make-bf bf+))(define dd* (make-bf bf*))(define dd/ (make-bf bf/))(define dd- (make-bf bf-))(define dd->fl bigfloat->flonum)(bf-precision 1024)
+;same with extfl...
+(define (in-rng-nr? N)(not (or (nan? N)(infinite? N))))
 
-(require math/flonum)
 
 (define-syntax label
   (let ()
     (define L '())
-    (define ALL '(Quad-goto00-1 Quad-goto00-2 Quad-goto00-3 Quad-goto10 Quad-goto20-1 Quad-goto20-2 Quad-goto30-1 Quad-goto30-2 Quad-goto40 Quad-goto40-1 Quad-goto50-1 Quad-goto50-2 Quad-goto50-3 Quad-goto50-4 Quad-goto60
+    (define ALL '(Quad-1 Quad-2 Quad-3.1.1 Quad-3.1.1.1 Quad-3.1.1.2 Quad-3.1.2.1  Quad-3.1.2.2 Quad-3.2.1 Quad-3.2.2.1.1 Quad-3.2.2.1.2 Quad-3.2.2.2.1 Quad-3.2.2.2.2
                   QuadraticSyntheticDivision
                   calcSC-type3 calcSC-type2 calcSC-type1
                   nextK-type3 nextK-normal nextK-smalla1
@@ -39,8 +42,10 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                   RealIT-converged RealIT-maxiter RealIT-zero-cluster RealIT-scaled RealIT-unscaled
                   QuadIT-go-linear QuadIT-converged QuadIT-relstp QuadIT-norelstp QuadIT-nonconverging QuadIT-normal
                   FixedShift-maxiter FixedShift-pass0-or-factor FixedShift-nonconvergingpass FixedShift-LinFirst FixedShift-QuadFirst FixedShift-QuadConverged
-                  FixedShift-LinSecond FixedShift-LinConverged FixedShift-QuadSecondSpec FixedShift-QuadSecondNorm FixedShift-QuadOver FixedShift-LinOver))
-    (define S '(QuadIT-maxiter))
+                  FixedShift-LinSecond FixedShift-LinConverged FixedShift-QuadSecondSpec FixedShift-QuadSecondNorm FixedShift-QuadOver FixedShift-LinOver
+                  ZeroShift-unscaled ZeroShift-scaled
+                  roots-degree1 roots-leadingzero roots-s@0 roots-huh? roots-roots2 roots-maxiter))
+    (define S '(QuadIT-maxiter Quad-3.2.2.2.1))
     (λ (stx)
       (syntax-case stx ()
         [(_ x)
@@ -54,14 +59,15 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
             (set! L (cons (syntax-e #'x) L))
             (when (not (member (syntax-e #'x) ALL))(printf "New entry ~a\n" (syntax-e #'x)))
             #'(void)])]))))
+(define-syntax-rule (TEST body ...) (module+ test body ...))
 
 (module+ test
   (require rackunit))
 
 (define epsilon10 (* 10 epsilon.0))
 (define epsilon100 (* 100 epsilon.0))
-(define FLT_MIN (floating-point-bytes->real (bytes #b00000000 #b00000000 #b00000000 #b00000001)))
-(define FLT_MAX (floating-point-bytes->real (bytes #b11111111 #b11111111 #b11111111 #b01111110)))
+(define +FLT_MIN (floating-point-bytes->real (bytes #b00000000 #b00000000 #b00000000 #b00000001)))
+(define +FLT_MAX (floating-point-bytes->real (bytes #b11111111 #b11111111 #b11111111 #b01111110)))
 
 (define RADFAC (/ (angle -1) 180));Degrees - to - radians conversion factor = pi/180
 (define cosr (cos (* 94 RADFAC)));-.069756474
@@ -82,9 +88,6 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                     (vector->immutable-vector a)
                     (unbox a))]
                [(a b)(vector-ref a b)]))
-(define mk
-  (case-lambda [() (box 'undefined)]
-               [(n) (make-vector n 0.)]))
 
 (define-syntax (prepare-one stx)
   (syntax-case stx (*)
@@ -104,105 +107,61 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
 ; ZEROS ARE REAL AND BOTH ZEROS ARE COMPLEX.
 ; THE SMALLER REAL ZERO IS FOUND DIRECTLY FROM THE
 ; PRODUCT OF THE ZEROS C/A.
-(define (Quad_imp A B1 C szr* szi* lzr* lzi*)
-  (define B (box 'undefined))(define E (box 'undefined))(define D (box 'undefined))
-  (define (goto00)
-    (cond
-      [(not (= A 0))
-       (label Quad-goto00-1)
-       (goto20)]
-      [else
-       (label Quad-goto00-2)       
-       (s! szr* 0.0)
-       (when (not (= B1 0))
-         (label Quad-goto00-3)
-         (s! szr* (- (/ C B1))))
-       (s! lzr* 0)
-       (goto10)]))
-  (define (goto10)
-    (label Quad-goto10)
-    (s! szi* 0)
-    (s! lzi* 0))
-  (define (goto20)
-    (cond
-      [(not (= C 0))
-       (label Quad-goto20-1)
-       (goto30)]
-      [else
-       (label Quad-goto20-2)
-       (s! szr* 0)
-       (s! lzr* (- (/ B1 A)))
-       (goto10)]))
-  ;compute Discriminant avoiding overflow
-  (define (goto30)
-    (s! B (/ B1 2))
-    (cond
-      [(< (abs (rf B)) (abs C))
-       (label Quad-goto30-1)
-       (goto40)]
-      [(s! E (- 1 (* (/ A (rf B))(/ C (rf B)))))
-       (label Quad-goto30-2)
-       (s! D (* (sqrt (abs (rf E)))(abs (rf B))))
-       (goto50)]))
-  (define (goto40)
-    (label Quad-goto40)
-    (s! E A)
-    (when (< C 0)
-      (label Quad-goto40-1)
-      (s! E (- A)))
-    (s! E (- (* (rf B) (/ (rf B) (abs C))) (rf E)))
-    (s! D (* (sqrt (abs (rf E))) (sqrt (abs C))))
-    (goto50))
-  (define (goto50)
-    (cond
-      [(< (rf E) 0)
-       (label Quad-goto50-1)
-       (goto60)]
-      [else
-       (label Quad-goto50-2)
-       ;real zeros
-       (when (> (rf B) 0)
-         (label Quad-goto50-3)
-         (s! D (- (rf D))))
-       (s! lzr* (/ (+ (- (rf B)) (rf D)) A))
-       (s! szr* 0)
-       (when (not (= (rf lzr*) 0))
-         (label Quad-goto50-4)
-         (s! szr* (/ (/ C (rf lzr*)) A)))
-       (goto10)]))
-  (define (goto60)
-    (label Quad-goto60)
-    ;comples conjugate zeros
-    (s! szr* (- (/ (rf B) A)))
-    (s! lzr* (rf szr*))
-    (s! szi* (abs (/ (rf D) A)))
-    (s! lzi* (- (rf szi*))))
-
-  (goto00))
-(define (Quad a b c)
-  (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
-  (Quad_imp a b c szr* szi* lzr* lzi*)
-  (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*)))
-(module+ test
-  (let ()
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
-    (Quad_imp 1 6 3 szr* szi* lzr* lzi*)
-    (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
-                  '(-0.5505102572168219 0 -5.449489742783178 0)
-                  epsilon100))
-  (let ()
-    (define szr* (mk))(define szi* (mk))
-    (define lzr* (mk))(define lzi* (mk))
-    (Quad_imp 1 2 3 szr* szi* lzr* lzi*)
-    (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
-                  '(-1 1.414213562373095 -1 -1.414213562373095)
-                  epsilon100))
-  (let ()
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *))
-    (Quad_imp 1 6 7 szr* szi* lzr* lzi*)
-    (check-within (list (rf szr*)(rf szi*)(rf lzr*)(rf lzi*))
-                  '(-1.585786437626905 0 -4.414213562373095 0)
-                  epsilon100)))
+(define (Quad A B1 C)
+  (cond
+    [(= A 0)(label Quad-1) (raise-argument-error 'Quad "not a quadratic" 0 A B1 C)]
+    [(= C 0)(label Quad-2) `((0.0 . 0.0) (,(- (/ B1 A)) . 0.0))]
+    ;what if A/B/C ±inf.0
+    [else
+     (define B (/ B1 2))
+     (define-values (D* E*)
+       (cond
+           [(< (abs B) (abs C))
+            (label Quad-3.1.1)
+            (define E0
+              (cond
+                [(< C 0)(label Quad-3.1.1.1)(- A)]
+                [else   (label Quad-3.1.1.2)   A]))
+            (define E1 (- (* B (/ B (abs C))) E0))
+            (values (* (sqrt (abs E1)) (sqrt (abs C)))
+                    E1)]
+           [else
+            (define E
+              (let ([E (- 1 (* (/ A B)(/ C B)))])
+                (cond
+                  [(in-rng-nr? E)(label Quad-3.1.2.2) E]
+                  [else (label Quad-3.1.2.1) (- 1 (* (/ (* A C) B B)))])))
+            (values (* (sqrt (abs E))(abs B))
+                    E)]))
+     ;compute Discriminant avoiding overflow
+     (cond
+       [(< E* 0)
+        (label Quad-3.2.1)
+        ;comples conjugate zeros
+        (define R (- (/ B A)))
+        (define I (abs (/ D* A)))
+        (list (cons R I) (cons R (- I)))]
+       [else
+        ;real zeros
+        (define D** (cond [(> B 0)(label Quad-3.2.2.1.1)(- D*)][else(label Quad-3.2.2.1.2)D*]))
+        (define Z1 (/ (- D** B) A))
+        (cond
+          [(= Z1 0) (label Quad-3.2.2.2.1)'((0.0 . 0.0) (0.0 . 0.0))]
+          [else     (label Quad-3.2.2.2.2)`((,(/ (/ C Z1) A) . 0.0) (,Z1 . 0.0))])])]))
+(TEST
+  (check-exn exn:fail:contract? (λ ()(Quad 0 0 0)))
+  ;(check-within (Quad 0 0 1) '(0 0 0 0) epsilon100)
+  ;(check-within (Quad 0 1 0) '(0 0 0 0) epsilon100)
+  ;(check-within (Quad 0 1 1) '(-1 0 0 0) epsilon100)
+  (check-within (Quad 1 0 0) '((0 . 0) (0 . 0)) epsilon100)
+  (check-within (Quad 1 0 1) '((0 . 1) (0 . -1)) epsilon100)
+  (check-within (Quad 1 0 -1) '((-1 . 0) (1 . 0)) epsilon100)
+  (check-within (Quad 1 1 0) '((0 . 0) (-1 . 0)) epsilon100)
+  (check-within (Quad 1 6 3) '((-0.5505102572168219 . 0)  (-5.449489742783178 .  0)) epsilon100)
+  (check-within (Quad 1 2 3) '((-1 . 1.414213562373095)   (-1 . -1.414213562373095)) epsilon100)
+  (check-within (Quad 1 6 7) '((-1.585786437626905 . 0)   (-4.414213562373095 . 0)) epsilon100)
+  (check-within (Quad +max.0 0.9 -min.0) '((0.0 . 0.0) (0.0 . 0.0)) epsilon100)
+  (check-equal? (Quad +inf.0 1e10 -9e-303) '((+nan.0 . 0.0) (+nan.0 . 0.0))))
 
 ; Divides p by the quadratic x^2+u*x+v
 ; placing the quotient in q and the remainder in a, b
@@ -218,7 +177,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
     (set! b a)
     (set! a (rf q i)))
   (list q a b))
-(module+ test
+(TEST
   (check-within (QuadraticSyntheticDivision 4 2.8 3.5 #(1. 2. 3. 4. 5.))
                 (list #(1.0 -0.8 1.74 1.928) 1.928 1.74)
                 epsilon100)
@@ -263,7 +222,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
         (define a3 (+ (* e a) (* (+ g (/ h c)) b)))
         (define a7 (+ (* g d) (* h f) a))
         (list 'calcSC:div-by-c qk* c d e f g h a1 a3 a7)])]))
-(module+ test
+(TEST
   (check-within (calcSC 4 2.3 4.6 #(1. 2. 3. 4. 5.) 1.8 9.2)
                 (list 'calcSC:div-by-c
                       #(1.0 0.2 -6.56 13.968)
@@ -311,7 +270,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
         (for ([i (in-range 2 N)])
           (s! K i (+ (* a3 (rf qk (- i 2))) (* -1 a7 (rf qp (- i 1))))))
         (list K a3 a7)])]))
-(module+ test
+(TEST
   (check-within (nextK 4 'calcSC:div-by-c 8. 9. 10. 6. 7. #(11. 12. 13. 14. 15.) #(16. 17. 18. 19. 20.))
                 (list #(16.0 5.8 12.7 13.6 0.0) .6 .7)
                 epsilon100)
@@ -358,7 +317,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
         (let ();([a4 (dd->fl a4)][a5 (dd->fl a5)][b1 (dd->fl b1)][b2 (dd->fl b2)][c1 (dd->fl c1)][c2 (dd->fl c2)][c3 (dd->fl c3)][c4 (dd->fl c4)][temp (dd->fl temp)])
           (list (dd->fl (dd+ (dd* -1.0 (dd/ (dd+ (dd* u (dd+ c3 c2)) (dd* v (dd+ (dd* b1 a1)(dd* b2 a7)))) temp)) u))
                 (dd->fl (dd* v (dd+ 1.0 (dd/ c4 temp))))))])]))
-(module+ test
+(TEST
   ;tflag=3
   (check-within (newest 'calcSC:almost-factor 1. 2. 3. 4. 5. 6. 7. 8. 9. 10. 11. 12. #(13. 14. 15. 16. 17.) 4 #(18. 19. 20. 21. 22.))
                 '(0. 0.) epsilon100)
@@ -409,7 +368,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
              [K* (let ([v (make-vector NN 0.0)])(s! v K)v)]
              [qk* (make-vector NN 0.0)]
              [s sss][omp 0][t 0])
-    ; Evaluate p at s
+    ; Evaluate p at s and compute remainder
     (define pv (rf p 0))(s! qp* 0 pv)
     (for ([i (in-range 1 NN)])
       (set! pv (+ (* pv s) (rf p i)))(s! qp* i pv))
@@ -456,7 +415,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                      (+ (* k s) (rf K* i))))
        (define t* (if (> (abs kv*) (* (abs (rf K* (- N 1))) epsilon10)) (- (/ pv kv*)) 0))
        (loop (+ j 1) qp* K* qk* (+ s t*) mp t*)])))
-(module+ test
+(TEST
   ;break small mp = zero found
  (check-within (RealIT 0.2 4 #(1. 2. 3. 4. -5.) 5 #(1. 2. 3. 4. 5.))
                 (list 'RealIT:normal 1
@@ -498,7 +457,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                   ;uu and vv are coefficients of the starting quadratic
                   [u uu][v vv]
                   [qp (make-vector NN 0.0)][K K])
-    (match-define (list szr szi lzr lzi)(Quad 1. u v))
+    (match-define (list (cons szr szi)(cons lzr lzi))(Quad 1. u v))
     (cond
       [(> (abs (- (abs szr)(abs lzr))) (* 0.01 (abs lzr)))
        ;Return if the roots of the quadratic are real and not close
@@ -515,7 +474,10 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
        (define e0 (for/fold ([e0 (* 2 (abs (rf qp 0)))])
                             ([i (in-range 1 N)])
                     (+ (* e0 zm) (abs (rf qp i)))))
-       (define ee (* (+ (* 9 (+ (* e0 zm) (abs (+ a t))))(* 2 (abs t))(* -7 (+ (abs (+ a t))(* zm (abs b))))) epsilon.0))
+       (define ee (* (+ (* 9 (+ (* e0 zm) (abs (+ a t))))
+                        (* 2 (abs t))
+                        (* -7 (+ (abs (+ a t))(* zm (abs b)))))
+                     epsilon.0))
        (cond
          [(<= mp (* 20 ee))
           ;Iteration has converged sufficiently if the polynomial
@@ -557,7 +519,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
              (label QuadIT-normal)
              (loop (+ j+ 1) mp (abs (/ (- vi v+)vi)) tried?+
                    ui vi qp+ Ki)])])])))
-(module+ test
+(TEST
   ;QuadIT-go-linear
   (check-within (QuadIT 4 6. 7. 5 #(1. 2. 3. 4. 5.) #(1. 2. 3. 4. 5.))
                 '(0 #(0.0 0.0 0.0 0.0 0.0)
@@ -588,7 +550,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                 epsilon100)
   ;QuadIT-normal [done in break converged]
   )
-(define (FixedShift L2 sr bnd K N p NN)
+(define (FixedShift maxiter sr bnd K N p NN)
   (prepare (szr* *)(lzr* *)(szi* *)(lzi* *))
   (define u (* -2 sr))
   (define v bnd)
@@ -601,7 +563,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
              [quadConvergingLimit 0.25][linConvergingLimit 0.25]
              [K_old K])
     (cond
-      [(<= L2 j)
+      [(<= maxiter j)
        (label FixedShift-maxiter)
        (list 0 K_old qp (rf szr*) (rf szi*) (rf lzr*) (rf lzi*))]
       [else
@@ -678,7 +640,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
             [else
              (label FixedShift-nonconvergingpass)
              (loop (+ j 1) vv ss tv ts quadConvergingLimit linConvergingLimit K)])])])))
-(module+ test
+(TEST
   ;passing pass0-or-factor QuadFirst QuadConverged
   (check-within (FixedShift 5 1.0 2.0 #(1. 2. 3. 4. 5.) 4 #(1. 2. 3. 4. 5.) 5)
                 '(2 #(1.0 3.669100109842665 5.210828554789748 2.6182632847377154 0.)
@@ -727,28 +689,25 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                     -0.5506721698539164 0.17588035331998092 -0.5506721698539164 -0.17588035331998092)
                 epsilon100)
   
-  #;(let ();looking for -> passing !7) 9)
-    (prepare (szr* *)(szi* *)(lzr* *)(lzi* *)(NZ* *))
-    (define (rdm)(- (* 20 (random)) 10))
-    (define NN 5)(define N (- NN 1))
-    (define p* (for/vector ([i (in-range NN)]) (rdm)))(println (list 'p p*))
-    (define qp* (for/vector ([i (in-range NN)]) (rdm)))(println (list 'qp qp*))
-    (define K* (for/vector ([i (in-range NN)]) (rdm)))(println (list 'K K*))
-    (s! NZ* (FixedShift 5 (rdm) (rdm) K* N p* NN qp* lzi* lzr* szi* szr*))
-    (check-within p* #() epsilon100)
-    (check-within qp* #() epsilon100)
-    (check-within K* #() epsilon100)
-    (check-within (map rf (list NZ* szr* szi* lzr* lzi*))
-                  '()
-                  epsilon100))
+  #;(let ();for searching branches
+    (define (rdm)(- (* 200 (random)) 100))
+    (for ([i (in-range 10000)])
+      (define p (for/vector ([i (in-range (+ (random 20) 3))])(rdm)))
+      (define NN (vector-length p))
+      (define K (for/vector ([i (in-range NN)])(rdm)))
+      (define L2 (+ (random 20) 5))
+      (define sr (rdm))
+      (define bnd (rdm))
+      (println (list i 'FixedShift L2 sr bnd K (- NN 1) p NN))
+      (FixedShift L2 sr bnd K (- NN 1) p NN)))
   )
 
 (define evalPoly
   (case-lambda
     [(x p Degree)
-     (define ff (rf p 0))
-     (for ([i (in-range 1 (+ Degree 1))]) (set! ff (+ (* ff x) (rf p i))))
-     ff]
+     (for/fold ([ff (rf p 0)])
+               ([i (in-range 1 (+ Degree 1))])
+       (+ (* ff x)(rf p i)))]
     [(x p Degree f* df*)
      (s! df* (rf p 0))(s! f* (rf p 0))
      (for ([i (in-range 1 Degree)])
@@ -772,23 +731,25 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
 ; The functions return a number x such that x has a magnitude in 
 ; the interval [1/2, 1) or 0, and value = x*(2**exp).
   (define-values (sc- sc+) (for/fold ([sc- +inf.0][sc+ -inf.0])([v (in-vector p*)]) (define V (abs v))(values (min sc- V)(max sc+ V))))
-  (define sc (fl/ (fl/ FLT_MIN epsilon.0) sc-));was using +min.0, but that is for double, not single Float
+  (define sc (fl/ (fl/ +FLT_MIN epsilon.0) sc-));was using +min.0, but that is for double, not single Float
   (define s
     (cond
       [(or (and (< sc 1) (<= 10 sc+))
-           (and (< 1 sc) (<= sc+ (/ FLT_MAX sc))))
-       (when (= sc 0) (set! sc FLT_MIN))
+           (and (< 1 sc) (<= sc+ (/ +FLT_MAX sc))))
+       (when (= sc 0) (set! sc +FLT_MIN))
        (define l (floor (fl+ (fl/ (fllog sc)(fllog 2.0)) 0.5)))
        (flexpt 2.0 l)]
       [else 1.0]))
-  (when (not (= s 1.0))
-    (for ([i (in-range (+ N 1))])
-      (s! p* i (* (rf p* i) s)))))
-(module+ test
+  (cond
+    [(= s 1.0) p*]
+    [else
+     (for/vector ([v (in-vector p*)])
+       (* v s))]))
+(TEST
   (let ()
     (define p* (vector 1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
-    (scalePoly p* (- (vector-length p*) 1))
-    (check-within p* #(5.293955920339377e-23 -2.649995515044282e-22 5.306029962073926e-22 -5.3120727149296205e-22 2.6590596436449997e-22 -5.324169677789603e-23) epsilon100)))
+    (check-within (scalePoly p* (- (vector-length p*) 1))
+                  #(5.293955920339377e-23 -2.649995515044282e-22 5.306029962073926e-22 -5.3120727149296205e-22 2.6590596436449997e-22 -5.324169677789603e-23) epsilon100)))
 
 ;Compute lower bound on moduli of zeros
 (define (lowerBoundZeroPoly p N)
@@ -816,136 +777,138 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
     'dummy)
   x)
 
-(define (roots2 p Degree j zeror* zeroi*)
+(define (roots2 p Degree)
   (cond
-    [(= Degree 1)
-     (s! zeror* j (- (/ (rf p 1) (rf p 0))))
-     (s! zeroi* j 0)]
+    [(= Degree 1)(list (- (/ (rf p 1) (rf p 0))))]
     [(= Degree 2)
-     (define szr* (box 'undefined))(define szi* (box 'undefined))(define lzr* (box 'undefined))(define lzi* (box 'undefined))
-     (Quad_imp (rf p 0) (rf p 1) (rf p 2) szr* szi* lzr* lzi*)
-     (s! zeror* j (rf szr*))      (s! zeroi* j (rf szi*))
-     (s! zeror* (+ j 1) (rf lzr*))(s! zeroi* (+ j 1) (rf lzi*))]))
+     (for/list ([z (in-list (Quad (rf p 0)(rf p 1)(rf p 2)))])
+       (+ (car z) (* +i (cdr z))))]))
 
-(define (roots op Degree zeror* zeroi*)
+(define (ZeroShift maxiter p K1 N)
+  (define K* (make-vector N 0.0))
+  (s! K* K1)
+  (define NM1 (- N 1))
+  (define aa (rf p N))
+  (define bb (rf p NM1))
+  (define zerok (isZero (rf K* NM1)))
+  (for ([iter (in-range maxiter)])
+    (cond
+      [zerok ;Use unscaled form of recurrence
+       (label ZeroShift-unscaled)
+       (for ([i (in-range NM1)])(s! K* (- NM1 i) (rf K* (- NM1 i 1))))
+       (s! K* 0 0)
+       (set! zerok (isZero (rf K* NM1)))]
+      [else ;Use scaled form of recurrence if value of K at 0 is nonzero
+       (label ZeroShift-scaled)
+       (define t (- (/ aa (rf K* NM1))))
+       (for ([i (in-range NM1)])
+         (define j (- NM1 i))
+         (s! K* j (+ (* t (rf K* (- j 1))) (rf p j))))
+       (s! K* 0 (rf p 0))
+       (set! zerok (<= (abs (rf K* NM1)) (* (abs bb) epsilon10)))]))
+  K*)
+
+(define (1root iteration-scheme p N xx yy)
+  (define-values (mxZ maxiter) (match iteration-scheme [(list A B _ _ _)(values A B)][A (values A A)]))
+  ;Find the largest and smallest moduli of the coefficients !!this is imediatly scaling, not just finding
+  (define p* (scalePoly p N))
+  ;Compute lower bound on moduli of zeros
+  (define bnd (lowerBoundZeroPoly (rf p*) N))
+  ;Compute the (scaled) derivative as the initial K polynomial => K = p'/N
+  (define K_0 (for/vector ([i (in-range N)])
+                (if (= i 0) (rf p* 0)
+                    (/ (* (- N i) (rf p* i)) N))))
+  ;do 5 steps with no shift
+  (define K_1 (ZeroShift mxZ (rf p*) K_0 N))
+  ;Loop to select the quadratic corresponding to each new shift
+  (let loop ([j 0])
+    (cond
+      [(< j maxiter)
+       ;Quadratic corresponds to a double shift to a non-real point and its
+       ;complex conjugate. The point has modulus BND and angle rotated
+       ;by 94° from the previous shift
+       (define tmp (+ (* -1 sinr yy)(* cosr xx)))
+       (set! yy (+ (* sinr xx)(* cosr yy)))
+       (set! xx tmp)
+       (define sr (* bnd xx))
+       ;Second stage calculation fixed quadratic
+       (match-define (list NZ K qp szr szi lzr lzi)
+         (FixedShift (* 20 (+ j 1)) sr bnd K_1 N (rf p*) (+ N 1)))
+       ;The second stage jumps directly to one of the third stage iterations and
+       ;returns here if successful.Deflate the polynomial, store the zero or
+       ;zeros, and return to the main algorithm.
+       (case NZ
+         [(2) ;(for ([i (in-range (+ N 1))]) (s! p* i (rf qp* i)))
+              (list NZ xx yy (list (+ szr (* +i szi))(+ lzr (* +i lzi))) qp)]
+         [(1) ;(for ([i (in-range (+ N 1))]) (s! p* i (rf qp* i)))
+              (list NZ xx yy (list szr) qp)]
+         [else
+          ;If the iteration is unseccessful, another quadratic is chosen after restoring K
+          (loop (+ j 1))])]
+      [else #f])))
+
+(define (roots op)
+  (define iteration-scheme '(5 20 20 20 10))
+  (define Degree (- (vector-length op) 1))
   (call/ec
    (λ (return)
-     (when (< Degree 1) (return 'degree<1))
-     ;Do a quick check to see if leading coefficient is 0
-     ;The leading coefficient is zero. No further action is taken. Program terminated
-     (when (isZero (rf op 0)) (return 'leading-zero))
-     (define K* (make-vector (+ Degree 1) 0))
-     (define p* (make-vector (+ Degree 1) 0))
-     (define qp* (make-vector (+ Degree 1) 0))
-     (define temp* (make-vector (+ Degree 1) 0))
-
-     (define N Degree)
-     (define xx (sqrt 0.5))
-     (define yy (- xx))
-     ;Remove zeros at the origin, if any
-     (for ([j (in-range N)])
-       #:break (not (isZero (rf op N)))
-       (set! N (- N 1))(s! zeror* j 0.0)(s! zeroi* j 0.0))
-     (for ([i (in-range (+ N 1))])(s! p* i (rf op i)));make a copy of the coefficients
-     (for ([_ (in-naturals)])
-       #:break (not (> N 0))
-       ;Main loop
-       ;Start the algorithm for one zero
-       #:break (and (< N 3) (roots2 (rf p*) N (- Degree N) zeror* zeroi*))
-       ;Find the largest and smallest moduli of the coefficients !!this is imediatly scaling, not just finding
-       (scalePoly p* N)
-       ;Compute lower bound on moduli of zeros
-       (define bnd (lowerBoundZeroPoly (rf p*) N))
-       ;Compute the derivative as the initial K polynomial and
-       ;do 5 steps with no shift
-       (for ([i (in-range 1 N)]) (s! K* i (/ (* (- N i) (rf p* i)) N)))
-       (s! K* 0 (rf p* 0))
-       (define NM1 (- N 1))
-       (define aa (rf p* N))
-       (define bb (rf p* NM1))
-       (define zerok (isZero (rf K* NM1)))
-       (for ([iter (in-range 5)])
-         (cond
-           [zerok ;Use unscaled form of recurrence
-            (for ([i (in-range NM1)])(s! K* (- NM1 i) (rf K* (- NM1 i 1))))
-            (s! K* 0 0)
-            (set! zerok (isZero (rf K* NM1)))
-            ]
-           [else ;Use scaled form of recurrence if value of K at 0 is nonzero
-            (define t (- (/ aa (rf K* NM1))))
-            (for ([i (in-range NM1)])
-              (define j (- NM1 i))
-              (s! K* j (+ (* t (rf K* (- j 1))) (rf p* j))))
-            (s! K* 0 (rf p* 0))
-            (set! zerok (<= (abs (rf K* NM1)) (* (abs bb) epsilon10)))]))
-       ;Save K for restarts with new shifts
-       (for ([i (in-range N)])(s! temp* i (rf K* i)))
-       ;Loop to select the quadratic corresponding to each new shift
-       (define ok #f)
-       (for ([iter (in-range 20)]
-             #:break ok)
-         ;Quadratic corresponds to a double shift to a non-real point and its
-         ;complex conjugate. The point has modulus BND and angle rotated
-         ;by 94° from the previous shift
-         (define tmp (+ (* -1 sinr yy)(* cosr xx)))
-         (set! yy (+ (* sinr xx)(* cosr yy)))
-         (set! xx tmp)
-         (define sr (* bnd xx))
-         ;Second stage calculation fixed quadratic
-         (define lzi* (box 'undefined))(define lzr* (box 'undefined))(define szi* (box 'undefined))(define szr* (box 'undefined))
-         (match-define (list NZ K qp szr szi lzr lzi)
-           (FixedShift (* 20 (+ iter 1)) sr bnd (rf K*) N (rf p*) (+ N 1)))
-         (s! K* K (+ N 1))(s! qp* qp (+ N 1))
-         (s! lzi* lzi)(s! lzr* lzr)(s! szi* szi)(s! szr* szr)
-         (set! ok (not (= NZ 0)))
-         (cond
-           [ok
-            ;The second stage jumps directly to one of the third stage iterations and
-            ;returns here if successful.Deflate the polynomial, store the zero or
-            ;zeros, and return to the main algorithm.
-            (define j (- Degree N))
-            (s! zeror* j (rf szr*))
-            (s! zeroi* j (rf szi*))
-            (when (not (= NZ 1))
-              (s! zeror* (+ j 1) (rf lzr*))
-              (s! zeroi* (+ j 1) (rf lzi*)))
-            (set! N (- N NZ))
-            (for ([i (in-range (+ N 1))]) (s! p* i (rf qp* i)))]
-           [else
-            ;If the iteration is unseccessful, another quadratic is chosen after restoring K
-            (for ([i (in-range N)])(s! K* i (rf temp* i)))]))
-       ;Return with failure if no convergence with 20 shifts
-       (when (not ok) (return 'no-fixed-shift-convergence)))
-     0)))
-(define (mfr p)
-  (define degree (- (vector-length p) 1))
-  (define zeror* (make-vector degree 0))(define zeroi* (make-vector degree 0))
-  (define return-value (roots p degree zeror* zeroi*))
-  (cons return-value
-        (for/list ([i (in-range degree)])
-          (+ (rf zeror* i)(* +i (rf zeroi* i))))))
-(module+ test
+     (cond
+       [(< Degree 1) (label roots-degree1)'degree<1]
+       ;Do a quick check to see if leading coefficient is 0
+       ;The leading coefficient is zero. No further action is taken. Program terminated
+       [(isZero (rf op 0)) (label roots-leadingzero) 'leading-zero]
+       [else
+        (define N Degree)
+        ;Remove zeros at the origin, if any
+        (define s@0 (for/sum ([i (in-range N -1 -1)] #:break (not (= 0 (rf op i))))(label roots-s@0)1))
+        (set! N (- N s@0))
+        
+        ;Main loop
+        (let loop ([N N]
+                   [xx (sqrt 0.5)]
+                   [yy (- (sqrt 0.5))]
+                   [ans (for/list ([i (in-range s@0)])(cons 0.0 0.0))]
+                   [p (vector-copy op 0 (+ N 1))])
+          (cond
+            [(<= N 0) (label roots-huh?) ans]
+            [(< N 3)
+             (label roots-roots2)
+             (append ans (roots2 p N))]
+            [else
+             (match (1root iteration-scheme p N xx yy)
+               [(list NZ xx+ yy+ ans+ qp) (loop (- N NZ) xx+ yy+ (append ans ans+) qp)]
+               [#f
+                (label roots-maxiter)
+                'no-fixed-shift-convergence])]))]))))
+(define (mfr p)(roots p))
+(TEST
+ (check-within (mfr #(1. 1. 1. 1. 1.))
+               '(0.3090169943749474+0.9510565162951535i
+                 0.3090169943749474-0.9510565162951535i
+                 -0.8090169943749475+0.5877852522924729i
+                 -0.8090169943749475-0.5877852522924729i)
+               epsilon.0)
   (check-within (mfr #(1. 2. 3. 4. 5.))
-                '(0 0.287815479557648+1.4160930801719078i 0.287815479557648-1.4160930801719078i -1.287815479557648+0.8578967583284905i -1.287815479557648-0.8578967583284905i)
+                '(0.287815479557648+1.4160930801719078i 0.287815479557648-1.4160930801719078i -1.287815479557648+0.8578967583284905i -1.287815479557648-0.8578967583284905i)
                 epsilon100)
   (check-within (mfr #(1. 2. 3. 4. -5.))
-                '(0 0.6841243194530697 -2.0591424445683537 -0.3124909374423581+1.8578744391719895i -0.3124909374423581-1.8578744391719895i)
+                '(0.6841243194530697 -2.0591424445683537 -0.3124909374423581+1.8578744391719895i -0.3124909374423581-1.8578744391719895i)
                 epsilon100)
   (check-within (mfr #(1. 3. 1. 0.08866210790363471))
-                '(0 -0.18350341911302884 -0.1835034190315191 -2.632993161855452)
+                '(-0.18350341911302884 -0.1835034190315191 -2.632993161855452)
                 epsilon100)
-  ;irritatingly difficult (flpoly-from-roots .9998 .9999 1. 1.003 1.003
+  ;irritatingly difficult (flpoly-from-roots .9998 .9999 1. 1.003 1.003)
   (check-within (mfr #(1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
-                '(0 0.9998971273942638 1.0029951281002996 0.9995771489617781 1.0030048540302405 1.0002257415134181)
+                '(0.9998971273942638 1.0029951281002996 0.9995771489617781 1.0030048540302405 1.0002257415134181)
                 epsilon100)
   ;same but exact
   ;(mfr #(1 -50057/10000 501140361/50000000 -501711082871/50000000000 251141082742009/50000000000000 -50285360871009/50000000000000))
   (check-within (mfr #(1e-8 1e-16 1e-20 -1e25 38.5))
-                '(0 3.85e-24 100000000000.0 -50000000000.0+86602540378.44386i -50000000000.0-86602540378.44386i)
+                '(3.85e-24 100000000000.0 -50000000000.0+86602540378.44386i -50000000000.0-86602540378.44386i)
                 epsilon100)
   ;checks FixedShift 6)
   (check-within (mfr #(1 -1.1262458658846637 -1.0101179104905715 0.1369529023140107  -0.07030543743385387  0.34354611896594955  0.7685557744974647  0.9049868924344322 -0.4694264319569345))
-                '(0 0.37998534697611247 -0.6385228013511156+0.6232370795625065i -0.6385228013511156-0.6232370795625065i 0.16462177207475362+0.9168019517176714i 0.16462177207475362-0.9168019517176714i 1.1475571613888245 -1.00470119265642 1.5512066087288707)
+                '(0.37998534697611247 -0.6385228013511156+0.6232370795625065i -0.6385228013511156-0.6232370795625065i 0.16462177207475362+0.9168019517176714i 0.16462177207475362-0.9168019517176714i 1.1475571613888245 -1.00470119265642 1.5512066087288707)
                 epsilon100)
   #;(begin
     (define p (for/vector ([i (in-range (+ 5 (random 5)))])(- (* (random) 20) 10)))
