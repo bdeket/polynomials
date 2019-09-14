@@ -454,9 +454,9 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
 ; factor converges only if the zeros are equimodular or nearly so.
 (define (QuadIT N uu vv NN p K)
   (let loop ([j 0][omp 0][relstp 0][tried? #f]
-                  ;uu and vv are coefficients of the starting quadratic
-                  [u uu][v vv]
-                  [qp (make-vector NN 0.0)][K K])
+             ;uu and vv are coefficients of the starting quadratic
+             [u uu][v vv]
+             [qp (make-vector NN 0.0)][K K])
     (match-define (list (cons szr szi)(cons lzr lzi))(Quad 1. u v))
     (cond
       [(> (abs (- (abs szr)(abs lzr))) (* 0.01 (abs lzr)))
@@ -702,86 +702,82 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
       (FixedShift L2 sr bnd K (- NN 1) p NN)))
   )
 
-(define evalPoly
-  (case-lambda
-    [(x p Degree)
-     (for/fold ([ff (rf p 0)])
-               ([i (in-range 1 (+ Degree 1))])
-       (+ (* ff x)(rf p i)))]
-    [(x p Degree f* df*)
-     (s! df* (rf p 0))(s! f* (rf p 0))
-     (for ([i (in-range 1 Degree)])
-       (s! f* (+ (* x (rf f*)) (rf p i)))
-       (s! df* (+ (* x (rf df*)) (rf f*))))
-     (s! f* (+ (* x (rf f*)) (rf p Degree)))]))
+(define (evalPoly x P)
+  (for/fold ([ff (rf P 0)])
+            ([ai (in-vector P 1)])
+       (+ (* ff x)ai)))
+(define (evalPoly+df x p)
+  (define degree (- (vector-length p) 1))
+  (prepare (f* *)(df* *))
+  (s! df* (rf p 0))(s! f* (rf p 0))
+  (for ([i (in-range 1 degree)])
+    (s! f* (+ (* x (rf f*)) (rf p i)))
+    (s! df* (+ (* x (rf df*)) (rf f*))))
+  (s! f* (+ (* x (rf f*)) (rf p degree)))
+  (values (rf f*)(rf df*)))
 
 ; Scale if there are large or very small coefficients
 ; Computes a scale factor to multiply the coefficients of the polynomial.
 ; The scaling is done to avoid overflow and to avoid undetected underflow 
 ; interfering with the convergence criterion.
-; The factor is a power of the base.
-(define (scalePoly p* N)
-; double ldexp(double x, int n)
-; The ldexp() functions multiply x by 2 to the power n.
-;
-; double frexp(double value, int *exp);
-; The frexp() functions break the floating-point number value into
-; a normalized fraction and an integral power of 2.
-; They store the integer in the int object pointed to by exp.
-; The functions return a number x such that x has a magnitude in 
-; the interval [1/2, 1) or 0, and value = x*(2**exp).
-  (define-values (sc- sc+) (for/fold ([sc- +inf.0][sc+ -inf.0])([v (in-vector p*)]) (define V (abs v))(values (min sc- V)(max sc+ V))))
-  (define sc (fl/ (fl/ +FLT_MIN epsilon.0) sc-));was using +min.0, but that is for double, not single Float
+; The factor is a power of the base. (hardcoded to 2)
+(define (scalePoly P)
+  (define-values (a-min a-max)
+    (for/fold ([a- +inf.0][a+ -inf.0])
+              ([ai (in-vector P)])
+      (define Ai (abs ai))
+      (values (min a- Ai)(max a+ Ai))))
+  (define sc (fl/ (fl/ +FLT_MIN epsilon.0) a-min));was using +min.0, but that is for double, not single Float
   (define s
     (cond
-      [(or (and (< sc 1) (<= 10 sc+))
-           (and (< 1 sc) (<= sc+ (/ +FLT_MAX sc))))
-       (when (= sc 0) (set! sc +FLT_MIN))
-       (define l (floor (fl+ (fl/ (fllog sc)(fllog 2.0)) 0.5)))
+      [(or (and (< sc 1) (<= 10 a-max))
+           (and (< 1 sc) (<= a-max (/ +FLT_MAX sc))))
+       (define l (floor (fl+ (fl/ (fllog (if (= sc 0) +FLT_MIN sc))
+                                  (fllog 2.0))
+                             0.5)))
        (flexpt 2.0 l)]
       [else 1.0]))
   (cond
-    [(= s 1.0) p*]
+    [(= s 1.0) P]
     [else
-     (for/vector ([v (in-vector p*)])
-       (* v s))]))
+     (for/vector ([ai (in-vector P)])
+       (* ai s))]))
 (TEST
   (let ()
     (define p* (vector 1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
-    (check-within (scalePoly p* (- (vector-length p*) 1))
+    (check-within (scalePoly #(1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
                   #(5.293955920339377e-23 -2.649995515044282e-22 5.306029962073926e-22 -5.3120727149296205e-22 2.6590596436449997e-22 -5.324169677789603e-23) epsilon100)))
 
 ;Compute lower bound on moduli of zeros
-(define (lowerBoundZeroPoly p N)
-  (define pt (make-vector (+ N 1) 0))
-  (for ([i (in-range N)])(s! pt i (abs (rf p i))))
-  (s! pt N (- (abs (rf p N))))
+(define (lowerBoundZeroPoly P)
+  (define N (- (vector-length P) 1))
+  (define pt (for/vector ([ai (in-vector P)])(abs ai)))
+  (define pt_n (- (abs (rf P N))))
+  (s! pt N pt_n)
   ;Compute upper estimate of bound
-  (define x (exp (/ (- (log (- (rf pt N))) (log (rf pt 0))) N)))
+  (define x (exp (/ (- (log (- pt_n)) (log (rf pt 0))) N)))
   (when (not (isZero (rf pt (- N 1))));If Newton step at the origin is better, use it
-    (define xm (- (/ (rf pt N)(rf pt (- N 1)))))
+    (define xm (- (/ pt_n (rf pt (- N 1)))))
     (when (< xm x)(set! x xm)))
   ;Chop the interval (0, x) until f<=0
   (define xm x)
   (for ([_ (in-naturals)]
-        #:break (< (evalPoly xm pt N) 0))
+        #:break (< (evalPoly xm pt) 0))
     (set! x xm)(set! xm (* 0.1 x)))
   ;Do Newton iteration until x converges to two decimal places
-  (define dx 'undefined)
-  (for ([_ (in-naturals)])
-    (define f* (box 'undefined))(define df* (box 'undefined))
-    (evalPoly x pt N f* df*)
-    (set! dx (/ (rf f*)(rf df*)))
-    (set! x (- x dx))
-    #:break (<= (abs dx) (* (abs x) .005))
-    'dummy)
-  x)
+  (let loop ([x x])
+    (define-values (f df)(evalPoly+df x pt))
+    (define dx (/ f df))
+    (define x+ (- x dx))
+    (cond
+      [(<= (abs dx) (* (abs x+) .005)) x+]
+      [else (loop x+)])))
 
-(define (roots2 p Degree)
-  (cond
-    [(= Degree 1)(list (- (/ (rf p 1) (rf p 0))))]
-    [(= Degree 2)
-     (for/list ([z (in-list (Quad (rf p 0)(rf p 1)(rf p 2)))])
+(define (roots2 p)
+  (match p
+    [(vector a b)(list (- (/ b a)))]
+    [(vector a b c)
+     (for/list ([z (in-list (Quad a b c))])
        (+ (car z) (* +i (cdr z))))]))
 
 (define (ZeroShift maxiter p K1 N)
@@ -808,12 +804,13 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
        (set! zerok (<= (abs (rf K* NM1)) (* (abs bb) epsilon10)))]))
   K*)
 
-(define (1root iteration-scheme p N xx yy)
+(define (1root iteration-scheme p xx yy)
+  (define N (- (vector-length p) 1))
   (define-values (mxZ maxiter) (match iteration-scheme [(list A B _ _ _)(values A B)][A (values A A)]))
   ;Find the largest and smallest moduli of the coefficients !!this is imediatly scaling, not just finding
-  (define p* (scalePoly p N))
+  (define p* (scalePoly p))
   ;Compute lower bound on moduli of zeros
-  (define bnd (lowerBoundZeroPoly (rf p*) N))
+  (define bnd (lowerBoundZeroPoly p))
   ;Compute the (scaled) derivative as the initial K polynomial => K = p'/N
   (define K_0 (for/vector ([i (in-range N)])
                 (if (= i 0) (rf p* 0)
@@ -838,76 +835,72 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
        ;returns here if successful.Deflate the polynomial, store the zero or
        ;zeros, and return to the main algorithm.
        (case NZ
-         [(2) ;(for ([i (in-range (+ N 1))]) (s! p* i (rf qp* i)))
-              (list NZ xx yy (list (+ szr (* +i szi))(+ lzr (* +i lzi))) qp)]
-         [(1) ;(for ([i (in-range (+ N 1))]) (s! p* i (rf qp* i)))
-              (list NZ xx yy (list szr) qp)]
+         [(2) (list NZ xx yy (list (+ szr (* +i szi))(+ lzr (* +i lzi))) (vector-copy qp 0 (- N 1)))]
+         [(1) (list NZ xx yy (list szr) (vector-copy qp 0 N))]
          [else
           ;If the iteration is unseccessful, another quadratic is chosen after restoring K
           (loop (+ j 1))])]
       [else #f])))
 
-(define (roots op)
+(define (roots P)
   (define iteration-scheme '(5 20 20 20 10))
-  (define Degree (- (vector-length op) 1))
-  (call/ec
-   (λ (return)
-     (cond
-       [(< Degree 1) (label roots-degree1)'degree<1]
-       ;Do a quick check to see if leading coefficient is 0
-       ;The leading coefficient is zero. No further action is taken. Program terminated
-       [(isZero (rf op 0)) (label roots-leadingzero) 'leading-zero]
-       [else
-        (define N Degree)
-        ;Remove zeros at the origin, if any
-        (define s@0 (for/sum ([i (in-range N -1 -1)] #:break (not (= 0 (rf op i))))(label roots-s@0)1))
-        (set! N (- N s@0))
+  (define degree (- (vector-length P) 1))
+  (cond
+    [(< degree 1) (label roots-degree1)'degree<1]
+    ;Do a quick check to see if leading coefficient is 0
+    ;The leading coefficient is zero. No further action is taken. Program terminated
+    [(isZero (rf P 0)) (label roots-leadingzero) 'leading-zero]
+    [else
+     ;Remove zeros at the origin, if any
+     (define s@0 (for/sum ([i (in-range degree -1 -1)] #:break (not (= 0 (rf P i))))(label roots-s@0)1))
+     (define N (- degree s@0))
         
-        ;Main loop
-        (let loop ([N N]
-                   [xx (sqrt 0.5)]
-                   [yy (- (sqrt 0.5))]
-                   [ans (for/list ([i (in-range s@0)])(cons 0.0 0.0))]
-                   [p (vector-copy op 0 (+ N 1))])
-          (cond
-            [(<= N 0) (label roots-huh?) ans]
-            [(< N 3)
-             (label roots-roots2)
-             (append ans (roots2 p N))]
-            [else
-             (match (1root iteration-scheme p N xx yy)
-               [(list NZ xx+ yy+ ans+ qp) (loop (- N NZ) xx+ yy+ (append ans ans+) qp)]
-               [#f
-                (label roots-maxiter)
-                'no-fixed-shift-convergence])]))]))))
-(define (mfr p)(roots p))
+     ;Main loop
+     (let loop ([p (vector-copy P 0 (+ N 1))]
+                [N N]
+                [xx (sqrt 0.5)]
+                [yy (- (sqrt 0.5))]
+                [ans (for/list ([i (in-range s@0)]) 0.0)])
+       (cond
+         [(<= N 0) (label roots-huh?) ans]
+         [(< N 3)
+          (label roots-roots2)
+          (append ans (roots2 (vector-copy p 0 (+ N 1))))]
+         [else
+          (match (1root iteration-scheme p xx yy)
+            [(list NZ xx+ yy+ ans+ qp)
+             (loop qp (- N NZ) xx+ yy+ (append ans ans+))]
+            [#f
+             (label roots-maxiter)
+             'no-fixed-shift-convergence])]))]))
 (TEST
- (check-within (mfr #(1. 1. 1. 1. 1.))
+ (check-within (roots #(1 2 1 0 0)) '(0 0 -1 -1) epsilon.0)
+ (check-within (roots #(1. 1. 1. 1. 1.))
                '(0.3090169943749474+0.9510565162951535i
                  0.3090169943749474-0.9510565162951535i
                  -0.8090169943749475+0.5877852522924729i
                  -0.8090169943749475-0.5877852522924729i)
                epsilon.0)
-  (check-within (mfr #(1. 2. 3. 4. 5.))
+  (check-within (roots #(1. 2. 3. 4. 5.))
                 '(0.287815479557648+1.4160930801719078i 0.287815479557648-1.4160930801719078i -1.287815479557648+0.8578967583284905i -1.287815479557648-0.8578967583284905i)
                 epsilon100)
-  (check-within (mfr #(1. 2. 3. 4. -5.))
+  (check-within (roots #(1. 2. 3. 4. -5.))
                 '(0.6841243194530697 -2.0591424445683537 -0.3124909374423581+1.8578744391719895i -0.3124909374423581-1.8578744391719895i)
                 epsilon100)
-  (check-within (mfr #(1. 3. 1. 0.08866210790363471))
+  (check-within (roots #(1. 3. 1. 0.08866210790363471))
                 '(-0.18350341911302884 -0.1835034190315191 -2.632993161855452)
                 epsilon100)
   ;irritatingly difficult (flpoly-from-roots .9998 .9999 1. 1.003 1.003)
-  (check-within (mfr #(1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
+  (check-within (roots #(1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
                 '(0.9998971273942638 1.0029951281002996 0.9995771489617781 1.0030048540302405 1.0002257415134181)
                 epsilon100)
   ;same but exact
   ;(mfr #(1 -50057/10000 501140361/50000000 -501711082871/50000000000 251141082742009/50000000000000 -50285360871009/50000000000000))
-  (check-within (mfr #(1e-8 1e-16 1e-20 -1e25 38.5))
+  (check-within (roots #(1e-8 1e-16 1e-20 -1e25 38.5))
                 '(3.85e-24 100000000000.0 -50000000000.0+86602540378.44386i -50000000000.0-86602540378.44386i)
                 epsilon100)
   ;checks FixedShift 6)
-  (check-within (mfr #(1 -1.1262458658846637 -1.0101179104905715 0.1369529023140107  -0.07030543743385387  0.34354611896594955  0.7685557744974647  0.9049868924344322 -0.4694264319569345))
+  (check-within (roots #(1 -1.1262458658846637 -1.0101179104905715 0.1369529023140107  -0.07030543743385387  0.34354611896594955  0.7685557744974647  0.9049868924344322 -0.4694264319569345))
                 '(0.37998534697611247 -0.6385228013511156+0.6232370795625065i -0.6385228013511156-0.6232370795625065i 0.16462177207475362+0.9168019517176714i 0.16462177207475362-0.9168019517176714i 1.1475571613888245 -1.00470119265642 1.5512066087288707)
                 epsilon100)
   #;(begin
