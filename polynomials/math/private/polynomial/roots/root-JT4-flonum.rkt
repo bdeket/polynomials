@@ -45,12 +45,12 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                   FixedShift-LinSecond FixedShift-LinConverged FixedShift-QuadSecondSpec FixedShift-QuadSecondNorm FixedShift-QuadOver FixedShift-LinOver
                   ZeroShift-unscaled ZeroShift-scaled
                   1root-maxiter 1root-rootfound 1root-nexttry
-                  roots-degree1 roots-leadingzero roots-s@0 roots-huh? roots-roots2 roots-maxiter
+                  roots-degree1 roots-leadingzero roots-s@0 roots-onlyZeroes roots-roots2 roots-maxiter
                   scaleP-scalable scaleP-unscalable scaleP-not-scaled scaleP-scaled
                   LBZP-newtonstep LBZP-converged LBZP-loop))
-    (define S '(Quad-3.2.2.2.1 Quad-1 Quad-2 Quad-3.1.2.1 Quad-3.2.2.2.1
-                calcSC-type3 nextK-type3 nextK-smalla1 newest-type3 RealIT-unscaled    
-                ZeroShift-unscaled 1root-maxiter roots-degree1 roots-leadingzero roots-huh? roots-maxiter))
+    #;(define S '(Quad-3.2.2.2.1 Quad-1 Quad-2 Quad-3.1.2.1 Quad-3.2.2.2.1
+                calcSC-type3 nextK-type3 nextK-smalla1 newest-type3 RealIT-unscaled))
+    (define S '())
     (λ (stx)
       (syntax-case stx ()
         [(_ x)
@@ -64,7 +64,8 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
             (set! L (cons (syntax-e #'x) L))
             (when (not (member (syntax-e #'x) ALL))(printf "New entry ~a\n" (syntax-e #'x)))
             #'(void)])]))))
-(define-syntax-rule (TEST body ...) (void '(module+ test body ...)))
+;(define-syntax-rule (TEST body ...) (void '(module+ test body ...)))
+(define-syntax-rule (TEST body ...) (module+ test body ...))
 
 (module+ test (require rackunit))
 
@@ -130,7 +131,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
               (let ([E (- 1 (* (/ a2 a1/2)(/ a0 a1/2)))])
                 (cond
                   [(in-rng-nr? E)(label Quad-3.1.2.2) E]
-                  [else (label Quad-3.1.2.1) (- 1 (* (/ (* a2 a0) a1/2 a1/2)))])))
+                  [else (label Quad-3.1.2.1) (- 1 (/ (* a2 a0) a1/2 a1/2))])))
             (values (* (sqrt (abs E))(abs a1/2))
                     E)]))
      ;compute Discriminant avoiding overflow
@@ -237,14 +238,15 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                       0.0 3.0 0.7666666666666666 0.0 -27.6 36.8
                       -2.3 37.03 23.0)
                 epsilon100)
-  (check-within (calcSC #(1. -10 35. -50. 24.) 2.3 4.6 -6. 8.)
+  (check-within (calcSC #(1. -10 35. -50. 24.) 2.3 4.6 -6. 8.00000000000001)
                 (list 'calcSC:almost-factor
-                      #(1.0 -4.0 3.0 0.0 0.0)
-                      0.0 0.0)
+                      #(1.0 -4.0 2.999999999999986 -4.263256414560601e-14 -1.7408297026122455e-13)
+                      -1.7408297026122455e-13 -4.263256414560601e-14)
                 epsilon100))
 
 ;Computes the next K polynomials using the scalars computed in calcSC
 (define (nextK qp qk tFlag a b a1 a3 a7)
+;(println (list (vector-length qp)(vector-length qk)(-(vector-length qp)(vector-length qk))))
   (define N (vector-length qk))
   (define K (make-vector N 0.0))
   (cond
@@ -258,13 +260,13 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
      (cond
        [(> (abs a1) (* epsilon10 (abs temp)))
         (label nextK-normal)
-        (define a7* (/ a7 a1))
-        (define a3* (/ a3 a1))
+        (define a7+ (/ a7 a1))
+        (define a3+ (/ a3 a1))
         (s! K 0 (rf qp 0))
-        (s! K 1 (- (rf qp 1) (* a7* (rf qp 0))))
+        (s! K 1 (- (rf qp 1) (* a7+ (rf qp 0))))
         (for ([i (in-range 2 N)])
-          (s! K i (+ (rf qp i) (* -1 a7* (rf qp (- i 1))) (* a3* (rf qk (- i 2))))))
-        (list K a3* a7*)]
+          (s! K i (+ (rf qp i) (* -1 a7+ (rf qp (- i 1))) (* a3+ (rf qk (- i 2))))))
+        (list K a3+ a7+)]
        [else
         (label nextK-smalla1)
         ;If a1 is nearly zero, then use a special form of the recurrence
@@ -370,10 +372,10 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
   (define N (vector-length K))
   ;return (list iFlag NZ qp K* qk sss* szr szi)
   (let loop ([j 1]
-             [qp* (make-vector NN 0.0)]
-             [K* (let ([v (make-vector N 0.0)])(s! v K)v)]
+             [K K]
              [s sss][omp 0][t 0])
     ; Evaluate p at s and compute remainder
+    (define qp* (make-vector NN 0.0))
     (define pv (rf p 0))(s! qp* 0 pv)
     (for ([i (in-range 1 NN)])
       (set! pv (+ (* pv s) (rf p i)))(s! qp* i pv))
@@ -388,37 +390,39 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
        ;Iteration has converged sufficiently if the polynomial
        ;value is less than 20 times this bound
        (label RealIT-converged)
-       (list 'RealIT:normal 1 qp* K* sss s)]
+       (list 'RealIT:normal 1 qp* K sss s)]
       [(> j maxiter)
        (label RealIT-maxiter)
-       (list 'RealIT:normal 0 qp* K* sss 'undefined)]
+       (list 'RealIT:maxiter 0 qp* K sss 'undefined)]
       [(and (>= j 2)
             (<= (abs t) (* 0.001 (abs (- s t)))) (> mp omp))
        ;A cluster of zeros near the real axis has been encountered;
        ;Return with iFlag set to initiate a quadratic iteration
        (label RealIT-zero-cluster)
-       (list 'RealIT:zero-cluster 0 qp* K* s 'undefined)]
+       (list 'RealIT:zero-cluster 0 qp* K s 'undefined)]
       [else
        ;Return if the polynomial value has increased significantly
        ;Compute t, the next polynomial and the new iterate
        (define qk* (make-vector N 0.0))
-       (define kv (rf K* 0))(s! qk* 0 kv)
+       (define kv (rf K 0))(s! qk* 0 kv)
        (for ([i (in-range 1 N)])
-         (set! kv (+ (* kv s) (rf K* i)))(s! qk* i kv))
-       (cond
-         [(> (abs kv) (* (abs (rf K* (- N 1))) epsilon10))
-          (label RealIT-scaled)
-          ;Use the scaled form of the recurrence if the value of K at s is non-zero
-          (define tt (- (/ pv kv)))
-          (s! K* 0 (rf qp* 0))
-          (for ([i (in-range 1 N)])(s! K* i (+ (* tt (rf qk* (- i 1))) (rf qp* i))))]
-         [else ;Use unscaled form
-          (label RealIT-unscaled)
-          (s! K* 0 0.0)
-          (for ([i (in-range 1 N)])(s! K* i (rf qk* (- i 1))))])
-       (define kv* (evalPoly (vector-copy K* 0 N) s))
-       (define t* (if (> (abs kv*) (* (abs (rf K* (- N 1))) epsilon10)) (- (/ pv kv*)) 0))
-       (loop (+ j 1) qp* K* (+ s t*) mp t*)])))
+         (set! kv (+ (* kv s) (rf K i)))(s! qk* i kv))
+       (define K+
+         (cond
+           [(> (abs kv) (* (abs (rf K (- N 1))) epsilon10))
+            (label RealIT-scaled)
+            ;Use the scaled form of the recurrence if the value of K at s is non-zero
+            (define tt (- (/ pv kv)))
+            (list->vector
+             (cons (rf qp* 0)
+                   (for/list ([i (in-range 1 N)])(+ (* tt (rf qk* (- i 1))) (rf qp* i)))))]
+           [else ;Use unscaled form
+            (label RealIT-unscaled)
+            (list->vector
+             (cons 0.0 (for/list ([i (in-range 1 N)])(rf qk* (- i 1)))))]))
+       (define kv+ (evalPoly (vector-copy K+ 0 N) s))
+       (define t+ (if (> (abs kv+) (* (abs (rf K+ (- N 1))) epsilon10)) (- (/ pv kv+)) 0))
+       (loop (+ j 1) K+ (+ s t+) mp t+)])))
 (TEST
   ;break small mp = zero found
  (check-within (RealIT 10 #(1. 2. 3. 4. -5.) #(1. 2. 3. 4.) 0.2)
@@ -429,7 +433,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                 epsilon100)
   ;break iterrations j (iFlag=0 & NZ=0)
  (check-within (RealIT 10 #(1. 2. 3. 4. 5.) #(1. 2. 3. 4.) 1.0)
-                (list 'RealIT:normal 0
+                (list 'RealIT:maxiter 0
                       #(1.0 -0.6849750434472566 4.839140897040084 -8.992972540277597 29.145906837051825)
                       #(1.0 1.0919036572997787 1.0019196569203022 3.933013624211993)
                       1 'undefined)
@@ -478,7 +482,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                         (* 2 (abs t))
                         (* -7 (+ (abs (+ a t))(* zm (abs b)))))
                      epsilon.0))
-       (cond
+        (cond
          [(<= mp (* 20 ee))
           ;Iteration has converged sufficiently if the polynomial
           ;value is less than 20 times this bound
@@ -509,7 +513,9 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                (label QuadIT-norelstp)
                (values j tried? u v a b qp K)]))
           ;Calculate next K polynomial and new u and v
+(println (list u+ v+ a+ b+ qp+ K+))
           (match-define (list Ki _ ui vi)(calcSC->K+newest p qp+ K+ a+ b+ u+ v+))
+(println (list Ki ui vi))
           (cond
             [(= vi 0.0)
              ;If vi is zero, the iteration is not converging
@@ -551,7 +557,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
   ;QuadIT-normal [done in break converged]
   )
 (define (FixedShift iteration-scheme0 P K sr bnd)
-  (define iteration-scheme (if (vector? iteration-scheme0)iteration-scheme0 (make-vector 6 iteration-scheme)))
+  (define iteration-scheme (if (vector? iteration-scheme0)iteration-scheme0 (make-vector 6 iteration-scheme0)))
   (define N (vector-length K))
   (define u (* -2 sr))
   (define v bnd)
@@ -849,7 +855,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                 [angle (make-polar 1 (* -45 RADFAC))]
                 [ans (for/list ([i (in-range s@0)]) 0.0)])
        (cond
-         [(<= (vector-length P) 1) (label roots-huh?) ans]
+         [(<= (vector-length P) 1) (label roots-onlyZeroes) ans]
          [(<= (vector-length P) 3)
           (label roots-roots2)
           (append ans (roots2 P))]
@@ -917,10 +923,41 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
   (check-within (roots #(49.710497758300875 83.86411816900053 -36.84017911151918 -14.016998958665823 17.093717575886586 -58.21731735700788 -55.75463399220348 -1.192533142875618) #(10 7 13 11 10 7))
                 '(-0.02189268218917173 -0.740897582574855+0.3020074801637734i -0.740897582574855-0.3020074801637734i 0.34616045877917445+0.8686851231541562i 0.34616045877917445-0.8686851231541562i 1.028202297696444 -1.9038858291033882)
                 epsilon100)
-  (let ();for searching branches
-    (define (rdm)(- (* 200 (random)) 100))
-    (for ([i (in-range 100000)])
-      (define p (for/vector ([i (in-range (+ (random 7) 3))])(rdm)))
+  ;'1root-maxiter'roots-maxiter
+  (check-within (roots #(22.709304169643517 -87.36732242917714 13.288056236672148 -41.39643819314873 75.18712911729767 -35.487285112346356 -93.38667030083654 -18.78550828140827 39.560341795103426 72.3237416807884 56.78347959438429 58.343051452039475 -31.924565751177653 67.97234288841659 13.739862585880672 57.482326672487886 2.103801825454184 -96.50241534051075 17.05682765408889) #(18 5 6 17 8 16))
+                'no-fixed-shift-convergence
+                epsilon100)
+  ;'roots-leadingzero
+  (check-within (roots #(0 -34.31069728932926 -86.06077988367579 -29.809362734748845 -32.30243846748657 -46.697569318370526 93.20029574485068 8.046955603586227) #(19 16 11 17 15 7))
+                'leading-zero
+                epsilon100)
+  ;'ZeroShift-unscaled
+  (check-within (roots #(-17.756065857424794 25.893174382341186 -60.51441252673925 0 67.74493116488347) #(8 19 8 9 17 6))
+                '(1.1219852897128721 -0.8443057836142638 0.5902962670087036+1.9181033950461768i 0.5902962670087036-1.9181033950461768i)
+                epsilon100)
+  ;'roots-onlyZeroes
+  (check-within (roots #(-188.89404654362278 0 0) #(16 17 7 5 9 7))
+                '(0.0 0.0)
+                epsilon100)
+  ;'roots-degree1
+  (check-within (roots #(-188.89404654362278) #(16 17 7 5 9 7))
+                'degree<1
+                epsilon100)
+
+
+  #;(let ();for searching branches
+    (define (rdm)(let ([k (random 1000000000)])(- (* 2 k (random)) k)))
+    (for ([i (in-range 1000000000)])
+      (define p (for/vector ([i (in-range (+ (random 17) 3))])(rdm)))
       (define r (for/vector ([i (in-range 6)]) (+ 5 (random 16))))
-      (displayln (list i (list 'roots p r)))
-      (roots p r))) )
+      (define out (open-output-string))
+      (define ans
+        (parameterize ([current-output-port out])
+          (roots p r)))
+      (define S (get-output-string out))
+      (unless (equal? "" S)
+        (displayln i)
+        (displayln S)
+        (displayln (list 'check-within (list 'roots p r)
+                         ans
+                         'epsilon100))))))
