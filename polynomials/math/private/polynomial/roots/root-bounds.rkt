@@ -8,6 +8,9 @@
 
 (provide (all-defined-out))
 
+(define +FLT_MIN (floating-point-bytes->real (bytes #b00000000 #b00000000 #b00000000 #b00000001)))
+(define +FLT_MAX (floating-point-bytes->real (bytes #b11111111 #b11111111 #b11111111 #b01111110)))
+
 ;------------------------------------
 ;bounds
 ;------------------------------------
@@ -34,11 +37,13 @@
 
 (define (flpoly-bestscale [P : flpoly]) : Flonum
   (match-define (list sc- sc+) (abs-coefficient-interval P))
-  (define sc (fl/ +min.0 (fl* epsilon.0 sc-)))
+  (define sc (fl/ +FLT_MIN (fl* epsilon.0 sc-)))
   (cond
     [(or (and (< sc 1) (<= 10 sc+))
-         (and (< 1 sc) (<= sc+ (/ +max.0 sc))))
-     (define l (round (fl+ (fl/ (fllog sc)(fllog 2.0)) 0.5)))
+         (and (< 1 sc) (<= sc+ (/ +FLT_MAX sc))))
+     (define l (round (fl+ (fl/ (fllog (if (fl= sc 0.0) +FLT_MIN sc))
+                                (fllog 2.0))
+                           0.5)))
      (flexpt 2.0 l)]
     [else 1.0]))
 
