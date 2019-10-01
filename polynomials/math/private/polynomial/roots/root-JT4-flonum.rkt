@@ -246,7 +246,6 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
 
 ;Computes the next K polynomials using the scalars computed in calcSC
 (define (nextK qp qk tFlag a b a1 a3 a7)
-;(println (list (vector-length qp)(vector-length qk)(-(vector-length qp)(vector-length qk))))
   (define N (vector-length qk))
   (define K (make-vector N 0.0))
   (cond
@@ -513,9 +512,7 @@ based on the original fortran & cpp translation fromTOMS/493 found at http://www
                (label QuadIT-norelstp)
                (values j tried? u v a b qp K)]))
           ;Calculate next K polynomial and new u and v
-(println (list u+ v+ a+ b+ qp+ K+))
           (match-define (list Ki _ ui vi)(calcSC->K+newest p qp+ K+ a+ b+ u+ v+))
-(println (list Ki ui vi))
           (cond
             [(= vi 0.0)
              ;If vi is zero, the iteration is not converging
