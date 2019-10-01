@@ -84,7 +84,7 @@
          (define zi (imag-part z))
          (define z* (- zr (* +i zi)))
          (unless (member z* (cdr rs)) (raise-argument-error 'flpoly-from-roots (format "complex conjugate pair (~a ~a)" z z*) z))
-         (cons (make-flpoly (vector (fl (+ (* zr zr)(* zi zi))) (fl (* 2 zr)) 1.0) 2)
+         (cons (make-flpoly (vector (fl (+ (* zr zr)(* zi zi))) (fl (* -2 zr)) 1.0) 2)
                (loop (remove z* (cdr rs))))])))
   (apply flpoly*-accurate
          (make-flpoly (vector s) 0)
