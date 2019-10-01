@@ -69,24 +69,26 @@
      (if (vector? a)(flpolyV> a)(flpolyL> a))]
     [else (flpolyV> (list->vector (cons a b)))]))
 
-(: flpoly-from-roots_old (->* () (#:s Flonum) #:rest Flonum flpoly))
-(define (flpoly-from-roots_old #:s [s 1.0] . rs)
-  (for/fold ([p (make-flpoly (vector s) 0)])
-            ([ri (in-list rs)])
-    (flpoly*p p (make-flpoly (vector (- ri) 1.0) 1))))
-(: flpoly-from-roots (->* () (#:s Flonum) #:rest Flonum flpoly))
+(: flpoly-from-roots (->* () (#:s Flonum) #:rest Number flpoly))
 (define (flpoly-from-roots #:s [s 1.0] . rs)
+  (define Ss
+    (let loop : (Listof flpoly)([rs : (Listof Number) rs])
+      (cond
+        [(null? rs) '()]
+        [(real? (car rs))
+         (cons (make-flpoly (vector (- (fl (car rs))) 1.0) 1)
+               (loop (cdr rs)))]
+        [else
+         (define z (car rs))
+         (define zr (real-part z))
+         (define zi (imag-part z))
+         (define z* (- zr (* +i zi)))
+         (unless (member z* (cdr rs)) (raise-argument-error 'flpoly-from-roots (format "complex conjugate pair (~a ~a)" z z*) z))
+         (cons (make-flpoly (vector (fl (+ (* zr zr)(* zi zi))) (fl (* 2 zr)) 1.0) 2)
+               (loop (remove z* (cdr rs))))])))
   (apply flpoly*-accurate
          (make-flpoly (vector s) 0)
-         (for/list : (Listof flpoly) ([ri (in-list rs)])
-           (make-flpoly (vector (- ri) 1.0) 1))))
-
-(: flpoly-from-complex-root (-> Number flpoly))
-(define (flpoly-from-complex-root r)
-  (define rR (fl (real-part r)))(define rI (fl (imag-part r)))
-  (define b (fl* -2.0 rR))
-  (define c (fl+ (fl* rR rR)(fl* rI rI)))
-  (make-flpoly (vector c b 1.0) 2))
+         Ss))
 
 (define (flpoly-coefficient [P : flpoly] [n : Integer]) : Flonum
   (cond
