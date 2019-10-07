@@ -14,14 +14,21 @@
     [(x)(apply string-append (for/list : (Listof String) ([i : Integer (in-range (flpoly-degree P) -1 -1)])(format "~ax^~a~a" (flpoly-coefficient P i) i (if (= i 0) "" "+"))))]
     [else P]))
 
+(require syntax/location)
+(define-syntax-rule (label x)(println (quote-srcloc x)))
 
 (define epsilon10 (* 10 epsilon.0))
 (define epsilon100 (* 100 epsilon.0))
-(define +FLT_MIN (floating-point-bytes->real (bytes #b00000000 #b00000000 #b00000000 #b00000001)))
-(define +FLT_MAX (floating-point-bytes->real (bytes #b11111111 #b11111111 #b11111111 #b01111110)))
 
 (struct iteration-scheme ([ZeroShift : Nonnegative-Integer][1Root : Nonnegative-Integer][Multiplier : Nonnegative-Integer][FixedShift : Nonnegative-Integer][QuadShift : Nonnegative-Integer][QuadFixedShift : Nonnegative-Integer][LinShift : Nonnegative-Integer]))
-(define standard-iteration-scheme (iteration-scheme 5 20 20 0 20 5 10))
+(define (make-iteration-scheme #:zero-shift [ZeroShift : Nonnegative-Integer 5]
+                               #:1root [1Root : Nonnegative-Integer 20]
+                               #:multiplier [Multiplier : Nonnegative-Integer 20]
+                               #:quad-shift [QuadShift : Nonnegative-Integer 20]
+                               #:quad-fixed-shift [QuadFixedShift : Nonnegative-Integer 5]
+                               #:linear-shift [LinShift : Nonnegative-Integer 10])
+  : iteration-scheme
+  (iteration-scheme ZeroShift 1Root Multiplier 0 QuadShift QuadFixedShift LinShift))
 
 (define-type TFlag (U 'calcSC:almost-factor 'calcSC:div-by-c 'calcSC:div-by-d))
 
@@ -47,7 +54,7 @@
   (define a1 (flpoly-coefficient P 1))
   (define a2 (flpoly-coefficient P 2))
   (cond
-    [(= a0 0) (values 0.0 0.0 (fl* -1.0 (fl/ a1 a2)) 0.0)]
+    [(= a0 0)(label x) (values 0.0 0.0 (fl* -1.0 (fl/ a1 a2)) 0.0)]
     ;what if a2/a1/a0 ±inf.0
     [else
      (define a1/2 (fl/ a1 2.0))
@@ -57,7 +64,7 @@
             (define E0
               (cond
                 [(fl< a0 0.0) (fl* -1.0 a2)]
-                [else        a2]))
+                [else         a2]))
             (define E1 (fl- (fl* a1/2 (fl/ a1/2 (flabs a0))) E0))
             (values (fl* (flsqrt (flabs E1)) (flsqrt (flabs a0)))
                     E1)]
@@ -66,7 +73,7 @@
               (let ([E (fl- 1.0 (fl* (fl/ a2 a1/2)(fl/ a0 a1/2)))])
                 (cond
                   [(not (or (nan? E)(infinite? E))) E]
-                  [else (fl- 1.0 (fl/ (fl/ (fl* a2 a0) a1/2) a1/2))])))
+                  [else(label x) (fl- 1.0 (fl/ (fl/ (fl* a2 a0) a1/2) a1/2))])))
             (values (fl* (flsqrt (flabs E))(flabs a1/2))
                     E)]))
      ;compute Discriminant avoiding overflow
@@ -81,31 +88,17 @@
         (define D** (cond [(> a1/2 0) (- D*)][else D*]))
         (define Z1 (/ (- D** a1/2) a2))
         (cond
-          [(= Z1 0) (values 0.0 0.0 0.0 0.0)]
+          [(= Z1 0) (label x)(values 0.0 0.0 0.0 0.0)]
           [else     (values (/ (/ a0 Z1) a2) 0.0 Z1 0.0)])])]))
 
 ; Divides p by the quadratic x^2+u*x+v
 ; placing the quotient in q and the remainder in a, b
 (define (QuadraticSyntheticDivision [P : flpoly][u : Flonum][v : Flonum])
-  (begin
-    (define-values (qP rP)(flpoly/p-QR P (flpoly> 1.0 u v)))
-    (values qP
-            (flpoly-coefficient rP 0)
-            (fl- (flpoly-coefficient rP 0)(fl* u (flpoly-coefficient rP 1)))
-            (flpoly-coefficient rP 1)))
-  #;(begin
-    (define b (flpoly-reverse-coefficient P 0))
-    (define a (fl- (flpoly-reverse-coefficient P 1)(fl* u b)))
-    (define R
-      (for/fold ([ans : (Listof Flonum) (list a b)])
-                ([i : Integer (in-range (- (flpoly-degree P) 2) -1 -1)])
-        (cons (fl- (flpoly-coefficient P i)
-                   (fl+ (fl* (car ans) u) (fl* (cadr ans) v)))
-              ans)))
-    (list (flpoly< (cddr R))
-          (+ (car R)(* u (cadr R)))
-          (car R)
-          (cadr R))))
+  (define-values (qP rP)(flpoly/p-QR P (flpoly> 1.0 u v)))
+  (values qP
+          (flpoly-coefficient rP 0)
+          (fl- (flpoly-coefficient rP 0)(fl* u (flpoly-coefficient rP 1)))
+          (flpoly-coefficient rP 1)))
 
 ; This routine calculates scalar quantities used to compute the next
 ; K polynomial and new estimates of the quadratic coefficients.
@@ -122,26 +115,26 @@
      ;type=3 indicates the quadratic is almost a factor of K
      (values 'calcSC:almost-factor qK c+ud c d 0.0 0.0 0.0 0.0 0.0 0.0 0.0)]
     [else
-     (define h (fl* v b))
+     (define bv (fl* v b))
      (cond
        [(fl>= (flabs d) (flabs c))
         ;TYPE = 2 indicates that all formulas are divided by d
-        (define e (fl/ a d))
-        (define f (fl/ c d))
-        (define g (fl* u b))
-        (define a1 (fl- (fl* f b) a))
-        (define a3 (fl+ (fl* e (+ g a)) (fl* h (/ b d))))
-        (define a7 (fl+ h (fl* c+ud e)));(f+u)a=(c+ud)a/d=(c+ud)*e
-        (values 'calcSC:div-by-d qK c+ud c d e f g h a1 a3 a7)]
+        (define a/d (fl/ a d))
+        (define c/d (fl/ c d))
+        (define bu (fl* u b))
+        (define a1 (fl- (fl* c/d b) a));bc/d-a~>bc-ad
+        (define a3 (fl+ (fl* a/d (+ bu a)) (fl* bv (/ b d))));aa/d+abu/d+bbv/d~>aa+abu+bbv
+        (define a7 (fl+ bv (fl* c+ud a/d)));bv+ac/d+adu/d~>bvd+ac+adu
+        (values 'calcSC:div-by-d qK c+ud c d a/d c/d bu bv a1 a3 a7)]
        [else
         ;TYPE = 1 indicates that all formulas are divided by c
-        (define e (fl/ a c))
-        (define f (fl/ d c))
-        (define g (fl* e u))
-        (define a1 (fl- b (fl* a f)))
-        (define a3 (fl+ (fl* e a) (fl* (fl+ g (fl/ h c)) b)))
-        (define a7 (fl+ (fl* h f) (fl* c+ud e)));gd+a=eud+a=a(ud/c+1)=a/c(c+ud)=(c+ud)*e
-        (values 'calcSC:div-by-c qK c+ud c d e f g h a1 a3 a7)])]))
+        (define a/c (fl/ a c))
+        (define d/c (fl/ d c))
+        (define au/c (fl* a/c u))
+        (define a1 (fl- b (fl* a d/c)));b-ad/c~>bc-ad
+        (define a3 (fl+ (fl* a/c a) (fl* (fl+ au/c (fl/ bv c)) b)));aa/c+abu/c+bbv/c~>aa+abu+bbv : aa+b(ua+vb)
+        (define a7 (fl+ (fl* bv d/c) (fl* c+ud a/c)));bvd/c+ac/c+adu/c~>bvd+ac+adu : ac+d(ua+vb)
+        (values 'calcSC:div-by-c qK c+ud c d a/c d/c au/c bv a1 a3 a7)])]))
 
 ;Computes the next K polynomials using the scalars computed in calcSC
 (define (nextK [qP : flpoly][qK : flpoly]
@@ -151,19 +144,20 @@
   (cond
     [(equal? tFlag 'calcSC:almost-factor)
      ; use unscaled form of the recurrence
-     (flpoly-shift qK -1)]
+     qK]
     [else
      (define temp (if (equal? tFlag 'calcSC:div-by-c) b a))
      (cond
-       [(> (abs a1) (* epsilon10 (abs temp)))
-        (define a7+ (/ a7 a1))
-        (define a3+ (/ a3 a1))
-        (flpoly+ qP
-                 (flpoly*s (flpoly-shift qP -1) (- a7+))
-                 (flpoly*s (flpoly-shift qK -1) a3+))]
+       [(fl> (flabs a1) (fl* epsilon10 (abs temp)))
+        (define a7+ (fl/ a7 a1))
+        (define a3+ (fl/ a3 a1))
+        (flpoly+ (flpoly*p qP (flpoly> 1.0 (- a7+)))
+                 (flpoly*s qK a3+)
+                 (const-flpoly b))]
        [else
-        (flpoly+ (flpoly*s (flpoly-shift qP -1) (- a7))
-                 (flpoly*s (flpoly-shift qK -1) a3))])]))
+        (label x)
+        (flpoly+ (flpoly*s qP (- a7))
+                 (flpoly*s qK a3))])]))
 
 ; Compute new estimates of the quadratic coefficients
 ; using the scalars computed in calcSC
@@ -173,17 +167,16 @@
                 [a1 : Flonum][a3 : Flonum][a7 : Flonum])
   : (Values Flonum Flonum)
   (cond
-    [(equal? tFlag 'calcSC:almost-factor)
-     (values 0.0 0.0)]
+    [(equal? tFlag 'calcSC:almost-factor) (values 0.0 0.0)]
     [else
      (define-values (a4 a5)
        (cond
          [(equal? tFlag 'calcSC:div-by-c)
-          (values (flsum (list a (fl* u b) (fl* h f)))
-                  (fl+ c (fl* (fl+ u (fl* v f)) d)))]
+          (values (flsum (list a (fl* u b) (fl* h f)));a+ub+vbd/c~>ac+ubc+vbd
+                  (fl+ c (fl* (fl+ u (fl* v f)) d)))];c+du+dvd/c~>cc+cdu+dvd
          [else
-          (values (fl+ (fl* (fl+ a g) f) h)
-                  (fl+ (fl* (fl+ f u) c) (fl* v d)))]))
+          (values (fl+ (fl* (fl+ a g) f) h);ac/d+buc/d+bv~>ac+ubc+bvd
+                  (fl+ (fl* (fl+ f u) c) (fl* v d)))]));cc/d+uc+vd~>cc+ucd+vdd
 
      (define b1 (fl* -1.0 (fl/ (flpoly-coefficient K 0)(flpoly-coefficient P 0))))
      (define b2 (fl* -1.0 (fl/ (fl+ (flpoly-coefficient K 1) (fl* b1 (flpoly-coefficient P 1))) (flpoly-coefficient P 0))))
@@ -193,8 +186,7 @@
      (define c4 (fl+ (fl* -1.0 (fl+ c2 c3)) c1))
      (define temp (flsum (list a5 (fl* -1.0 c4) (fl* b1 a4))))
      (cond
-       [(= temp 0.0)
-        (values 0.0 0.0)]
+       [(= temp 0.0) (values 0.0 0.0)]
        ;!!!if temp ≈ 0.0 these values blow up. Is this a good idea?
        [else
         (values (fl+ (fl* -1.0 (fl/ (fl+ (fl* u (fl+ c3 c2)) (fl* v (fl+ (fl* b1 a1)(fl* b2 a7)))) temp)) u)
@@ -204,13 +196,12 @@
                        [a : Flonum][b : Flonum][u : Flonum][v : Flonum])
   : flpoly
   (define-values (tFlag qK c+ud c d e f g h a1 a3 a7)(calcSC K a b u v))
-  (define sK (flpoly+ (flpoly-shift qK 1) (const-flpoly d)))
   (case tFlag
     [(calcSC:almost-factor)
-     (nextK qP sK
+     (nextK qP qK
             tFlag a b 0.0 0.0 0.0)]
     [else
-     (nextK qP sK tFlag a b a1 a3 a7)]))
+     (nextK qP qK tFlag a b a1 a3 a7)]))
 (define (calcSC->newest [P : flpoly][K : flpoly]
                         [a : Flonum][b : Flonum][u : Flonum][v : Flonum])
   : (values TFlag Flonum Flonum)
@@ -229,6 +220,12 @@
   (define-values (tFlag u+ v+)(calcSC->newest P K+ a b u v))
   (values tFlag K+ u+ v+))
 
+(define (altabs-Horner [qP : flpoly][f : Flonum][s : Flonum][p : Flonum]) : Flonum
+  (fl+ (for/fold ([ee : Flonum (fl* f (flabs (flpoly-reverse-coefficient qP 0)))])
+                 ([i : Integer (in-range 1 (+ (flpoly-degree qP) 2))])
+         (fl+ (fl* ee s) (flabs (flpoly-reverse-coefficient qP i))))
+       p))
+
 ; Variable - shift H - polynomial iteration for a real zero
 ; sss - starting iterate
 ; NZ - number of zeros found
@@ -240,41 +237,37 @@
             flpoly Flonum)
   (let loop ([j 1]
              [K K]
-             [s sss][omp 0.0][t 0.0])
+             [s sss][absP@s_old 0.0][t 0.0])
+    (println K)
     ; Evaluate p at s and compute remainder
-    (define-values (qP pv) (flpoly-reduce-root-QR P s))
-    (define mp (abs pv))
+    (define-values (qP P@s) (flpoly-reduce-root-QR P s))
+    (define absP@s (abs P@s))
     ;Compute a rigorous bound on the error in evaluating p
-    (define ms (abs s))
-    (define ee (+ (* (for/fold ([ee : Flonum (fl* 0.5 (flabs (flpoly-reverse-coefficient qP 0)))])
-                               ([i : Integer (in-range 1 (+ 1 (flpoly-degree qP)))])
-                       (fl+ (fl* ee ms) (flabs (flpoly-reverse-coefficient qP i))))
-                     ms)
-                  mp))
+    (define ee (altabs-Horner qP 0.5 (abs s) absP@s))
     (cond
-      [(fl<= mp (fl* (fl* 20.0 epsilon.0) (fl- (fl* 2.0 ee) mp)))
+      [(fl<= absP@s (fl* (fl* 20.0 epsilon.0) (fl- (fl* 2.0 ee) absP@s)))
        ;Iteration has converged sufficiently if the polynomial
        ;value is less than 20 times this bound
        (values 'RealIT:normal qP s)]
       [(> j (iteration-scheme-LinShift IS))
        (values 'RealIT:maxiter flpoly-zero 0.0)]
       [(and (>= j 2)
-            (fl<= (abs t) (fl* 0.001 (flabs (- s t)))) (> mp omp))
+            (fl<= (abs t) (fl* 0.001 (flabs (- s t)))) (> absP@s absP@s_old))
        ;A cluster of zeros near the real axis has been encountered;
        ;Return with iFlag set to initiate a quadratic iteration
        (values 'RealIT:zero-cluster K s)]
       [else
        ;Return if the polynomial value has increased significantly
        ;Compute t, the next polynomial and the new iterate
-       (define-values (qK kv)(flpoly-reduce-root-QR K s))
+       (define-values (qK K@s)(flpoly-reduce-root-QR K s))
        ;Use the scaled form of the recurrence if the value of K at s is non-zero
        (define K+
-         (if (fl> (flabs kv) (fl* (flabs (flpoly-coefficient K 0)) epsilon10))
-             (flpoly+ (flpoly*s qK (- (/ pv kv))) qP)
+         (if (fl> (flabs K@s) (fl* (flabs (flpoly-coefficient K 0)) epsilon10))
+             (flpoly+ (flpoly*s qK (- (/ P@s K@s))) qP)
              qK))
        (define kv+ (Horner K+ s))
-       (define t+ (if (fl> (abs kv+) (fl* (flabs (flpoly-coefficient K+ 0)) epsilon10)) (fl* -1.0 (fl/ pv kv+)) 0.0))
-       (loop (+ j 1) K+ (fl+ s t+) mp t+)])))
+       (define t+ (if (fl> (abs kv+) (fl* (flabs (flpoly-coefficient K+ 0)) epsilon10)) (fl* -1.0 (fl/ P@s kv+)) 0.0))
+       (loop (+ j 1) K+ (fl+ s t+) absP@s t+)])))
 
 ; Variable - shift K - polynomial iteration for a quadratic
 ; factor converges only if the zeros are equimodular or nearly so.
@@ -295,28 +288,25 @@
       [else
        ;Evaluate polynomial by quadratic synthetic division
        (define-values (qP a+ub a b)(QuadraticSyntheticDivision P u v))
-       (define sP (flpoly+ (flpoly-shift qP 1) (const-flpoly b)))
        (define mp (+ (abs (- a (* szr b))) (abs (* szi b))))
        ;Compute a rigorous bound on the rounding error in evaluating p
        (define zm (sqrt (abs v)))
        (define t (- (* szr b)))
-       (define e0 (for/fold ([e0 : Flonum (fl* 2.0 (abs (flpoly-reverse-coefficient sP 0)))])
-                                      ([i : Integer (in-range 1 (+ (flpoly-degree sP) 1))])
-                              (fl+ (fl* e0 zm) (flabs (flpoly-reverse-coefficient sP i)))))
+       (define e0 (altabs-Horner qP 2.0 zm b))
        (define ee (fl* (flsum (list (fl* 9.0 (fl+ (fl* e0 zm) (flabs (fl+ a t))))
                                     (fl* 2.0 (flabs t))
                                     (fl* -7.0 (fl+ (flabs (fl+ a t))(fl* zm (flabs b))))))
-                     epsilon.0))
+                       epsilon.0))
        (cond
          [(fl<= mp (fl* 20.0 ee))
           ;Iteration has converged sufficiently if the polynomial
           ;value is less than 20 times this bound
-          (values 'QuadIT:normal sP (+ szr (* +i szi)) (+ lzr (* +i lzi)))]
+          (values 'QuadIT:normal qP (+ szr (* +i szi)) (+ lzr (* +i lzi)))]
          ;Stop iteration after 20 steps
          [(> j (iteration-scheme-QuadShift IS))
           (values 'QuadIT:maxiter flpoly-zero 0 0)]
          [else
-          (define-values (j+ tried?+ u+ v+ a+ b+ sP+ K+)
+          (define-values (j+ tried?+ u+ v+ a+ b+ qP+ K+)
             (cond
               [(and (>= j 2)
                     (fl<= relstp 0.01) (fl>= mp omp) (not tried?))
@@ -326,16 +316,15 @@
                (define u+ (fl- u (fl* u relstp+)))
                (define v+ (fl+ v (fl* v relstp+)))
                (define-values (qP+ a+ub+ a+ b+)(QuadraticSyntheticDivision P u+ v+))
-               (define sP+ (flpoly+ (flpoly-shift qP+ 1) (const-flpoly b+)))
                (define K+
                  (for/fold ([K+ : flpoly K])
                            ([i : Integer (in-range (iteration-scheme-QuadFixedShift IS))])
-                   (calcSC->nextK sP+ K+ a+ b+ u+ v+)))
-               (values 0 #t u+ v+ a+ b+ sP+ K+)]
+                   (calcSC->nextK qP+ K+ a+ b+ u+ v+)))
+               (values 0 #t u+ v+ a+ b+ qP+ K+)]
               [else
-               (values j tried? u v a b sP K)]))
+               (values j tried? u v a b qP K)]))
           ;Calculate next K polynomial and new u and v
-          (define-values (tFlag Ki ui vi)(calcSC->K+newest P sP+ K+ a+ b+ u+ v+))
+          (define-values (tFlag Ki ui vi)(calcSC->K+newest P qP+ K+ a+ b+ u+ v+))
           (cond
             [(fl= vi 0.0)
              ;If vi is zero, the iteration is not converging
@@ -343,6 +332,35 @@
             [else
              (loop (+ j+ 1) mp (flabs (fl/ (fl- vi v+) vi)) tried?+
                    ui vi Ki)])])])))
+
+(define (tryQuad [IS : iteration-scheme][P : flpoly][K : flpoly]
+                 [sss : Flonum][ui : Flonum][vi : Flonum]
+                 [quadConvergingLimit : Flonum][linConvergingLimit : Flonum]
+                 [next : (-> flpoly Flonum Flonum (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number)))]
+                 [tryLin? : Boolean])
+  : (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number))
+  (define-values (qFlag qP sz lz)(QuadIT IS P K ui vi))
+  ;decrease the convergence criterion for if Quadratic iteration fails, 
+  (define  qCL (fl* quadConvergingLimit 0.25))
+  (cond
+    [(equal? qFlag 'QuadIT:normal) (values 'FixedShift:normal qP (list sz lz))]
+    [tryLin?                       (tryLin IS P K sss ui vi qCL linConvergingLimit next #f)]
+    [else                          (next K qCL linConvergingLimit)]))
+(define (tryLin [IS : iteration-scheme][P : flpoly][K : flpoly]
+                [sss : Flonum][ui : Flonum][vi : Flonum]
+                [quadConvergingLimit : Flonum][linConvergingLimit : Flonum]
+                [next : (-> flpoly Flonum Flonum (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number)))]
+                [tryQuad? : Boolean])
+  : (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number))
+  (define-values (iFlag F z)(RealIT IS P K sss))
+  ;decrease the convergence criterion for if Linear iteration fails, 
+  (define lCL (fl* linConvergingLimit 0.25))
+  (cond
+    [(equal? iFlag 'RealIT:normal)       (values 'FixedShift:normal F (list z))]
+     ;If linear iteration signals an almost double real zero, attempt quadratic iteration
+    [(equal? iFlag 'RealIT:zero-cluster) (tryQuad IS P F sss (fl* -2.0 z) (fl* z z) quadConvergingLimit lCL next #f)]
+    [tryQuad?                            (tryQuad IS P K sss ui vi quadConvergingLimit lCL next #f)]
+    [else                                (next K quadConvergingLimit lCL)]))
 
 ;The fixed shift
 (define (FixedShift [IS : iteration-scheme]
@@ -353,7 +371,6 @@
   (define v bnd)
   ;Evaluate polynomial by synthetic division
   (define-values (qP a+ub a b)(QuadraticSyntheticDivision P u v))
-  (define sP (flpoly+ (flpoly-shift qP 1) (const-flpoly b)))
   ;fixed shifts: do a fixed shift, if quadratic or linear convergence is detected try to start stage 3.
   ;If unsuccessful continue the fixed shifts
   (let loop ([j : Integer 0][K_old : flpoly K]
@@ -363,7 +380,7 @@
       [(<= (iteration-scheme-FixedShift IS) j) (values 'FixedShift:maxiter flpoly-zero '())]
       [else
        ;Calculate next K polynomial and estimate vv
-       (define-values (tFlag K uu vv)(calcSC->K+newest P sP K_old a b u v))
+       (define-values (tFlag K uu vv)(calcSC->K+newest P qP K_old a b u v))
        ;Estimate s
        (define ss (if (fl= (flpoly-coefficient K 0) 0.0)
                       0.0
@@ -376,64 +393,39 @@
           (define tv (if (not (fl= vv 0.0)) (flabs (fl/ (fl- vv vv_old) vv)) 1.0))
           (define ts (if (not (fl= ss 0.0)) (flabs (fl/ (fl- ss ss_old) ss)) 1.0))
           ;If decreasing, multiply the two most recent convergence measures
-          (define tvv (if (fl< tv tv_old) (fl* tv tv_old) 1.))
-          (define tss (if (fl< ts ts_old) (fl* ts ts_old) 1.))
+          (define tvv (if (fl< tv tv_old) (fl* tv tv_old) 1.0))
+          (define tss (if (fl< ts ts_old) (fl* ts ts_old) 1.0))
           ;Compare with convergence criteria
           (define quadConverging? (fl< tvv quadConvergingLimit))
           (define linConverging? (fl< tss linConvergingLimit))
+          (define (next [K : flpoly][quadConvergingLimit : Flonum][linConvergingLimit : Flonum])
+            : (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number))
+            (loop (+ j 1) K vv ss tv ts quadConvergingLimit linConvergingLimit))
           (cond
             [(or linConverging? quadConverging?)
              ;At least one sequence has passed the convergence test.
-             (define (tryQuad [K : flpoly][ui : Flonum][vi : Flonum][triedLin? : Boolean][quadConvergingLimit : Flonum][linConvergingLimit : Flonum])
-               : (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number))
-               (define-values (qFlag qp sz lz)(QuadIT IS P K ui vi))
-               ;decrease the convergence criterion for if Quadratic iteration fails, 
-               (define  qCL (fl* quadConvergingLimit 0.25))
-               (cond
-                 [(equal? qFlag 'QuadIT:normal)
-                  (values 'FixedShift:normal (flpoly-shift qp -1) (list sz lz))]
-                 [(and (not triedLin?) linConverging?)
-                  (tryLin ss #t qCL linConvergingLimit)]
-                 [else
-                  (loop (+ j 1) K vv ss tv ts qCL linConvergingLimit)]))
-             (define (tryLin [sss : Flonum][triedQuad? : Boolean][quadConvergingLimit : Flonum][linConvergingLimit : Flonum])
-               : (Values (U 'FixedShift:normal 'FixedShift:maxiter) flpoly (Listof Number))
-               (define-values (iFlag F z)(RealIT IS P K sss))
-               ;decrease the convergence criterion for if Linear iteration fails, 
-               (define lCL (fl* linConvergingLimit 0.25))
-               (cond
-                 [(equal? iFlag 'RealIT:normal)
-                  (values 'FixedShift:normal F (list z))]
-                 [(equal? iFlag 'RealIT:zero-cluster)
-                  ;If linear iteration signals an almost double real zero, attempt quadratic iteration
-                  (tryQuad F (fl* -2.0 z) (fl* z z) #t quadConvergingLimit lCL)]
-                 [(and (not triedQuad?) quadConverging?)
-                  (tryQuad K uu vv #t quadConvergingLimit lCL)]
-                 [else
-                  (loop (+ j 1) K vv ss tv ts quadConvergingLimit lCL)]))
              ;Choose iteration according to the fastest converging sequence, if it fails try the other one (if it is converging)
              (cond
                [(and linConverging? (or (not quadConverging?) (< tss tvv)))
-                (tryLin ss #f quadConvergingLimit linConvergingLimit)]
+                (tryLin IS P K ss uu vv quadConvergingLimit linConvergingLimit next quadConverging?)]
                [else
-                (tryQuad K uu vv #f quadConvergingLimit linConvergingLimit)])]
+                (tryQuad IS P K ss uu vv quadConvergingLimit linConvergingLimit next linConverging?)])]
             [else
              (loop (+ j 1) K vv ss tv ts quadConvergingLimit linConvergingLimit)])])])))
 
 ;ZeroShift
 (define (ZeroShift [maxiter : Integer][P : flpoly][K : flpoly])
-  (define aa (flpoly-coefficient P 0))
-  (define bb (flpoly-coefficient P 1))
+  (define p0 (flpoly-coefficient P 0))
+  (define p1 (flpoly-coefficient P 1))
   (for/fold  ([K : flpoly K])
              ([iter : Integer (in-range maxiter)])
-    (define zerok (<= (abs (flpoly-coefficient K 0)) (* (abs bb) epsilon10)))
-    ;in original zerok depends on scaling form: <= is for scaled, otherwise only if K[0]=0
+    (define k0 (flpoly-coefficient K 0))
     (cond
-      [zerok ;Use unscaled form of recurrence
+      [(<= (abs k0) (* (abs p1) epsilon10)) ;Use unscaled form of recurrence
+       ;in original zerok depends on scaling form: <= is for scaled, otherwise only if K[0]=0
        (flpoly-shift K -1)]
       [else ;Use scaled form of recurrence if value of K at 0 is nonzero
-       (define t (- (/ aa (flpoly-coefficient K 0))))
-       (flpoly-shift (flpoly+ P (flpoly*s K t)) -1)])))
+       (flpoly-shift (flpoly+ P (flpoly*s K (- (/ p0 k0)))) -1)])))
 
 (define (1root [IS : iteration-scheme][P : flpoly][angle : Number])
   : (Values (U '1root:maxiter '1root:normal) flpoly Number (Listof Number))
@@ -443,14 +435,10 @@
   ;Compute lower bound on moduli of zeros
   (define bnd (roots-mod-lower-bound P))
   ;Compute the (scaled) derivative as the initial K polynomial => K = p'/N
-  #;(define K_0 (for/vector ([i (in-range N)]
-                           [ai (in-vector P+)])
-                (if (= i 0) ai (/ (* (- N i) ai) N))))
   (define K_0 (flpoly*s (flpoly-diff P) (/ 1. N)))
   ;do 5 steps with no shift
   (define K_1 (ZeroShift (iteration-scheme-ZeroShift IS) P+ K_0))
   ;Loop to select the quadratic corresponding to each new shift
-(println (list (pp P+) (pp K_0) (pp  K_1) bnd))
   (let loop ([j : Nonnegative-Integer 0][angle : Number angle])
     (cond
       [(< j (iteration-scheme-1Root IS))
@@ -470,20 +458,16 @@
          [else (loop (+ j 1) angle+)])]
       [else (values '1root:maxiter flpoly-zero angle '())])))
 
-(define (roots [P : flpoly] #:iteration-scheme [IS : iteration-scheme standard-iteration-scheme])
+(define (roots [P : flpoly] #:iteration-scheme [IS : iteration-scheme (make-iteration-scheme)])
   : (Values (U 'roots:degree<1 'roots:maxiter 'roots:normal) (Listof Number))
   (cond
     [(< (flpoly-degree P) 1) (values 'roots:degree<1 '())]
-    ;Do a quick check to see if leading coefficient is 0
-    ;The leading coefficient is zero. No further action is taken. Program terminated
-    ;[(= 0.0 (rf P 0)) (label roots-leadingzero) 'leading-zero]
-    ;can not happen with flpoly
     [else
      ;Remove zeros at the origin, if any
      (define s@0 (for/sum : Integer ([i : Integer (in-range (flpoly-degree P))]
-                                     #:break (not (= 0 (flpoly-coefficient P 0))))
+                                     #:break (not (= 0 (flpoly-coefficient P i))))
                    1))
-        
+
      ;Main loop
      (let loop ([P : flpoly (flpoly-shift P (- s@0))]
                 [angle : Number (make-polar 1 (* -45 RADFAC))]
@@ -508,8 +492,10 @@
   (require rackunit
            math/flonum
            (submod "..")
-           "../poly-flonum.rkt")
+           "../poly-flonum.rkt"
+           (only-in "root-bounds.rkt" abs-coefficient-interval))
   (define (bigmargin n) (* (expt 10 n) epsilon100))
+#|
   ;Quad
   (define (QL S2)(define-values (szr szi slr sli)(Quad S2))(list (cons szr szi)(cons slr sli)))
   (check-within (QL (flpoly> 1. 0. 0.))  '((0.0 . 0.0)(-0.0 . 0.0)) epsilon10)
@@ -560,13 +546,13 @@
 
   ;nextK
   (check-within (nextK (flpoly> 16. 17. 18. 19.) (flpoly> 11. 12. 13.) 'calcSC:div-by-c 8. 9. 10. 6. 7.)
-                (flpoly> 16.0 5.8 12.7 13.6)
+                (flpoly> 16.0 5.8 12.7 13.6 3.5)
                 epsilon100)
   (check-within (nextK (flpoly> 16. 17. 18. 19.) (flpoly> 11. 12. 13.) 'calcSC:div-by-c 8. 9. 0. 6. 7.)
-                (flpoly> 0. -112. -53. -54.)
+                (flpoly> -112. -53. -54. -55.)
                 epsilon100)
   (check-within (nextK (flpoly> 16. 17. 18. 19.) (flpoly> 11. 12. 13.) 'calcSC:almost-factor 8. 9. 10. 6. 7.)
-                (flpoly> 0. 0. 11. 12.)
+                (flpoly> 11. 12. 13.)
                 epsilon100)
 
   ;newest
@@ -622,13 +608,13 @@
   (check-within (QITL standard-iteration-scheme (flpoly> 1. 2. 3. 4. 5.) (flpoly> 1. 2. 3. 4.) 6. 7.)
                 'QuadIT:nonquad epsilon100)
   (check-within (QITL standard-iteration-scheme (flpoly> 1. 2. 3. 4. 5.) (flpoly> 1. 2. 3. 4.) -0.575630959115296 0.0828377502729989)
-                (list 'QuadIT:normal (flpoly> 1.0 2.575630959115296 2.3944555573388273 0.)
+                (list 'QuadIT:normal (flpoly> 1.0 2.575630959115296 2.3944555573388273)
                       0.287815479557648 1.4160930801719076 0.287815479557648 -1.4160930801719076) (bigmargin 6))
   (check-within (QITL standard-iteration-scheme
                         (flpoly> -74.43388870038298 -48.684338183687615 82.95039531162064 2.082613677062014 60.82122424869209 -46.15017147716964 61.0180453610964 47.02754709444238 -5.330451975747479 91.51704177156668)
                         (flpoly> 38.515673952936254 7.252656554000609 -84.42246656861926 31.693388752691646 -27.265410421231138 -35.244767584584565 -97.79006609235279 8.92096535665003 -60.693225828975194)
                         14.737906787890154 56.6995805579966)
-                (list 'QuadIT:normal (flpoly> -74.43388870038298    28.5525675415266  134.72025177002524 -168.93474867929848   88.79349933216068  46.45222659669343 -84.28416458872897   83.6875414818494   -4.263256414560601e-14)
+                (list 'QuadIT:normal (flpoly> -74.43388870038298    28.5525675415266  134.72025177002524 -168.93474867929848   88.79349933216068  46.45222659669343 -84.28416458872897   83.6875414818494)
                       -0.5188289035664532 0.907949839624714 -0.5188289035664532 -0.907949839624714)
                 (bigmargin 1))
   #;(check-within (QITL standard-iteration-scheme
@@ -680,4 +666,247 @@
                 (list (flpoly> -74.46775787726362 172.36524977999846 -206.62332203773178 157.35777413703312 -108.18276080133784)
                       '(-0.5506721698539164+0.17588035331998092i -0.5506721698539164-0.17588035331998092i))
                 epsilon100);maxiter - because ...
+;|#
+  ;Roots
+  (define (RL P [IS (make-iteration-scheme)])
+    (define-values (flag rts)(roots P #:iteration-scheme IS))
+    (list flag (sort (for/list ([r (in-list rts)])
+                       (if (= 0 (imag-part r)) (real-part r) r))
+                     (λ (x y) (if (= (real-part x)(real-part y))
+                                  (> (imag-part x)(imag-part y))
+                                  (< (real-part x)(real-part y)))))))
+  (check-within (RL (flpoly> 1. 2. 1. 0. 0.))
+                '(roots:normal (-1. -1. 0. 0.))
+                epsilon.0)
+  (check-within (RL (flpoly> 1. 1. 1. 1. 1.))
+                '(roots:normal (-0.8090169943749475+0.5877852522924729i
+                                -0.8090169943749475-0.5877852522924729i
+                                0.3090169943749474+0.9510565162951535i
+                                0.3090169943749474-0.9510565162951535i))
+                epsilon10)
+  (check-within (RL (flpoly> 1. 2. 3. 4. 5.))
+                '(roots:normal (-1.287815479557648+0.8578967583284905i
+                                -1.287815479557648-0.8578967583284905i
+                                0.287815479557648+1.4160930801719078i
+                                0.287815479557648-1.4160930801719078i))
+                epsilon10)
+  (check-within (RL (flpoly> 1. 2. 3. 4. -5.))
+                '(roots:normal (-2.0591424445683537
+                                -0.3124909374423581+1.8578744391719895i
+                                -0.3124909374423581-1.8578744391719895i
+                                0.6841243194530697))
+                epsilon10)
+  (check-within (RL (flpoly> 1. 3. 1. 0.08866210790363471))
+                '(roots:normal (-2.632993161855452
+                                -0.18350341911302884
+                                -0.1835034190315191))
+                epsilon10)
+  ;irritatingly difficult (flpoly-from-roots .9998 .9999 1. 1.003 1.003)
+  (check-within (RL (flpoly> 1.0 -5.0057 10.02280722 -10.03422165742 5.02282165484018 -1.00570721742018))
+                '(roots:normal (0.9998
+                                0.9999
+                                1.0
+                                1.003
+                                1.003))
+                (bigmargin 11))
+  (check-within (RL (flpoly> 1e-8 1e-16 1e-20 -1e25 38.5))
+                '(roots:normal (-50000000000.0+86602540378.44386i
+                                -50000000000.0-86602540378.44386i
+                                3.85e-24
+                                100000000000.0))
+                epsilon.0)
+  (check-within (RL (flpoly> 1. -1.1262458658846637 -1.0101179104905715 0.1369529023140107  -0.07030543743385387  0.34354611896594955  0.7685557744974647  0.9049868924344322 -0.4694264319569345))
+                '(roots:normal (-1.00470119265642
+                                -0.6385228013511156+0.6232370795625065i
+                                -0.6385228013511156-0.6232370795625065i
+                                0.16462177207475362+0.9168019517176714i
+                                0.16462177207475362-0.9168019517176714i
+                                0.37998534697611247
+                                1.1475571613888245
+                                1.5512066087288707))
+                epsilon10)
+  (check-within (RL (flpoly> 91.18809308091258 10.754641992264794 -69.33386824593055 75.32381621826295 -99.6568435171208 -8.055652043683352)
+                    (iteration-scheme 16 7 6 0 13 6 6))
+                '(roots:normal (-1.4211122825020175
+                                -0.0761433179981868
+                                0.18998072135406274+0.8836475713376982i
+                                0.18998072135406274-0.8836475713376982i
+                                0.9993550538048728))
+                epsilon10)
+  (check-within (RL (flpoly> 89.66884488498786 -5.035976424692905 -27.674824222075614 -96.72180780166202 -76.0750414392931 74.2881927760188 -18.803978038771874 -88.40539985995814)
+                    (iteration-scheme 10 12 9 0 8 20 5))
+                '(roots:normal (-0.8415758009696521+0.238152739346124i
+                                -0.8415758009696521-0.238152739346124i
+                                -0.3656188900542874+1.1496345853579042i
+                                -0.3656188900542874-1.1496345853579042i
+                                0.5869751784061364+0.5817789453984389i
+                                0.5869751784061364-0.5817789453984389i
+                                1.296600966778984))
+                epsilon10)
+  (check-within (RL (flpoly> -40.64181224757269 -32.38161144204791 40.40535730410238 -65.15400236286979 -62.242148105606155 50.1741360957316 35.03883110547369 72.04602337106431 -60.304657589497225)
+                    (iteration-scheme 6 15 17 0 13 13 11))
+                '(roots:normal (-1.4278711153456562+0.20522664007256347i
+                                -1.4278711153456562-0.20522664007256347i
+                                -0.3924569734187341+0.799423579895323i
+                                -0.3924569734187341-0.799423579895323i
+                                0.6951414539634508+1.0992008490881526i
+                                0.6951414539634508-1.0992008490881526i
+                                0.7268085894914331+0.057272261653429815i
+                                0.7268085894914331-0.057272261653429815i))
+                epsilon10)
+  (check-within (RL (flpoly> 49.710497758300875 83.86411816900053 -36.84017911151918 -14.016998958665823 17.093717575886586 -58.21731735700788 -55.75463399220348 -1.192533142875618)
+                    (iteration-scheme 10 7 13 0 11 10 7))
+                '(roots:normal (-1.9038858291033882
+                                -0.740897582574855+0.3020074801637734i
+                                -0.740897582574855-0.3020074801637734i
+                                -0.02189268218917173
+                                0.34616045877917445+0.8686851231541562i
+                                0.34616045877917445-0.8686851231541562i
+                                1.028202297696444))
+                epsilon10)
+  (check-within (RL (flpoly> 22.709304169643517 -87.36732242917714 13.288056236672148 -41.39643819314873 75.18712911729767 -35.487285112346356 -93.38667030083654 -18.78550828140827 39.560341795103426 72.3237416807884 56.78347959438429 58.343051452039475 -31.924565751177653 67.97234288841659 13.739862585880672 57.482326672487886 2.103801825454184 -96.50241534051075 17.05682765408889)
+                    (iteration-scheme 18 5 6 0 17 8 16))
+                '(roots:maxiter ())
+                epsilon100)
+  (check-within (RL (flpoly> -17.756065857424794 25.893174382341186 -60.51441252673925 0.0 67.74493116488347)
+                    (iteration-scheme 8 19 8 0 9 17 6))
+                '(roots:normal (-0.8443057836142638
+                                0.5902962670087036+1.9181033950461768i
+                                0.5902962670087036-1.9181033950461768i
+                                1.1219852897128721))
+                epsilon100)
+  (check-within (RL (flpoly> -188.89404654362278 0.0 0.0)
+                    (iteration-scheme 8 19 8 0 9 17 6))
+                '(roots:normal (0.0 0.0))
+                epsilon100)
+  (check-within (RL (flpoly> -188.89404654362278)
+                    (iteration-scheme 8 19 8 0 9 17 6))
+                '(roots:degree<1 ())
+                epsilon100)
+  (check-within (RL (flpoly>  159229057.05739117 -78888201.05066945 -399652902.8637534 387714558.0458791 87147247.41927719 -373541203.5956339 3936235.3638518006)
+                    (iteration-scheme 13 18 9 0 14 10 5))
+                '(roots:normal (-1.5655085971707023
+                                -0.8960862217975081
+                                0.01056487103935344
+                                0.7583497020117624+0.769096584596765i
+                                0.7583497020117624-0.769096584596765i
+                                1.4297690179411084))
+                epsilon100)
+  (check-within (RL (flpoly> 214542993.69446766 15771022.467699721 890012027.745492 -165071836.07194433)
+                    (iteration-scheme 15 10 20 0 13 15 13))
+                '(roots:normal
+                  (-0.12844930880665237+2.0442655956929086i
+                   -0.12844930880665237-2.0442655956929086i
+                   0.1833887714229446))
+                epsilon100)
+  (check-within (RL (flpoly> -8016962.537211122 -595601492.2906611 715047653.6769369 -22040839.97303778 654164003.3990982 42327521.39674103 80334718.612445 392646145.08107615 -31915455.976172626 529782579.1482458 401148371.69478726)
+                    (iteration-scheme 7 20 9 0 20 19 11))
+                '(roots:normal (-75.47507382991347
+                                -0.6739936254864842+0.08281641620251147i
+                                -0.6739936254864842-0.08281641620251147i
+                                -0.47209709029395136+0.8952802963210883i
+                                -0.47209709029395136-0.8952802963210883i
+                                0.13029508476198612+0.936649222491123i
+                                0.13029508476198612-0.936649222491123i
+                                0.7769826257300415+0.5845313511419681i
+                                0.7769826257300415-0.5845313511419681i
+                                1.660037310741913))
+                epsilon100)
+  (check-within (RL (flpoly> 2.2257803969463154e-89 4.804973432196881e+55 -9254052903233.797 -7.173079397063823e+57 -3.643231025848551e-43 1.8776093704027008e-13 9.68826810716646e+82 5.953885255942153e-52 12473534698247728.0)
+                    (iteration-scheme 14 11 18 0 19 20 15))
+                '(roots:maxiter ())
+                epsilon10)
+  (check-within (RL (flpoly> -9.178897924537484e-49 -583000230.8972292 4.279804679145892e+62 -1.3555834609925188e-90 1.3976480650507842e+86 9.191199813915781e+48 2.72563841355331e+56 3.338044256510494e-45 9.616856917344557e+17)
+                    (iteration-scheme 12 8 15 0 6 17 17))
+                '(roots:maxiter ())
+                epsilon100)
+  (check-within (RL (flpoly> 1.3931473576870403e-38 -765.019962127356 -6.973551088128851e-73 8.856399693091199e-78 4.3775265455538223e-94 4.081553106420452e-27 -3.3408648019889094e-90 -4.7731718869925835e-70 -7.376023459763471e-17 5.002146579894817e+32 9.081327081405566e-42 3.556442467900932e+48 9.916740926607073e-79 -5.975430203343156e+43 -8.070681774686512e+98)
+                    (iteration-scheme 11 8 14 0 14 17 13))
+                '(roots:maxiter ())
+                epsilon10)
+  (check-within (RL (flpoly> 5.899323652745066e+98 -3.268616690736327e+28 -1.8171398662880743e-21 -9.182021624841844e-48 -0.0009582829713641801)
+                    (iteration-scheme 11 14 16 0 17 7 19))
+                '(error ()) epsilon.0)
+
+
+  ;next-ones have quite a big error comparing P with (flpoly-from-roots (roots P))
+  ;TODO: investigate
+  (check-within (RL (flpoly> 152477314.02538288 -191980602.43688652 609952937.2769084 -318365436.12520283 -187837307.74616426 -23048368.602685448 -370828396.5539714 -529130218.3615113 -123387300.88296044 423635917.5689908 593.3435119165806 249353152.52116847 -49473153.69341767 343062074.73545027 -18859194.72846794 -925302.59490747))
+                '(roots:normal (-0.9940833828509659
+                                -0.7577204961201565+0.5571103975024048i
+                                -0.7577204961201565-0.5571103975024048i
+                                -0.3686395087131277+0.7367779543475123i
+                                -0.3686395087131277-0.7367779543475123i
+                                -0.03122981669343392
+                                0.08669039865108745
+                                0.32225545895602825+1.89418075458199i
+                                0.32225545895602825-1.89418075458199i
+                                0.3645204204151995+1.1008398063471747i
+                                0.3645204204151995-1.1008398063471747i
+                                0.42412140113937313+0.6613616135339837i
+                                0.42412140113937313-0.6613616135339837i
+                                0.9876003122893545
+                                1.2410244343925487))
+                epsilon10)
+  (check-within (RL (flpoly> 323567969.8134451 -315295709.22543466 -703506171.2655511 -211962752.43570948 554725026.0003369 1249793.8748204112 28459313.912715524 -651790467.7979249 -31542556.93502626 464511198.4179255 77106973.0883564 -50099893.33604723 -94387402.11422235 -106.69235908228438 388627722.11239517 -690475900.500899))
+                '(roots:normal (-1.0257392004024477+0.6626987848351278i
+                                -1.0257392004024477-0.6626987848351278i
+                                -0.9759828789236693+0.27962552916677724i
+                                -0.9759828789236693-0.27962552916677724i
+                                -0.48904037099529135+0.8528650728813355i
+                                -0.48904037099529135-0.8528650728813355i
+                                -0.14058960488416075+0.9979401511411738i
+                                -0.14058960488416075-0.9979401511411738i
+                                0.3955087197236365+0.7714289963168508i
+                                0.3955087197236365-0.7714289963168508i
+                                0.7833020876493673+0.641810138744502i
+                                0.7833020876493673-0.641810138744502i
+                                0.9278611007273394+0.21395118987895495i
+                                0.9278611007273394-0.21395118987895495i
+                                2.023794535668963))
+                epsilon10)
+
+  (define (inv-check F0 ans)
+    (define rts:type (car ans))
+    (define rts (cadr ans))
+    (case rts:type
+      [(roots:normal)
+       (define mx (cadr (abs-coefficient-interval F0)))
+       (define F1 (apply flpoly-from-roots #:s (flpoly-reverse-coefficient F0 0) rts))
+       (sqrt (for/sum ([i (in-range (+ (flpoly-degree F1) 1))]) (expt (/ (- (flpoly-coefficient F0 i) (flpoly-coefficient F1 i)) mx) 2)))]
+      [else
+       0.0]))
+
+  #;(let ();for searching branches
+    (define (rdm)
+      (* (if (< (random) 0.5) -1.0 1.0)
+         (random)
+         (expt 10 (- (random 200) 100))))
+    (for ([i (in-range 1000000000)])
+      (define p (for/list ([i (in-range (+ (random 17) 3))])(rdm)))
+      (define P (flpolyL> p))
+      (define r (for/list ([i (in-range 7)]) (+ 5 (random 16))))
+      (define out (open-output-string))
+      (define ans
+        (parameterize ([current-output-port out])
+          (with-handlers ([exn:fail? (λ (e) (printf "This Failed: ~a\n" e) '(error ()))])
+            (RL P (apply iteration-scheme r)))))
+      (define err (inv-check P ans))
+      (define S (get-output-string out))
+      (unless (equal? "" S)
+        (displayln i)
+        (displayln S)
+        (displayln `(check-within (RL (flpoly> ,@p) (iteration-scheme ,@r))
+                                  ',ans
+                                  epsilon.0))
+        (displayln "------------------------------------------------"))
+      (unless (and (< err (bigmargin 8)))
+        (define err+ (inv-check P (RL P)))
+        (unless (< err+ (bigmargin 4))
+          (displayln i)
+          (displayln err)
+          (displayln `(check-within (RL (flpoly> ,@p))
+                                    ',ans
+                                    epsilon.0))
+          (displayln "------------------------------------------------")))))
   )
