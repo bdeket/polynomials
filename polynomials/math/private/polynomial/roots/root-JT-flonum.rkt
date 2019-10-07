@@ -110,29 +110,31 @@ si+1 = si + P(si)/Ki+1(si)
    rslt2))
 
 ;------------------------------------
+;P(z)= QP/S * S(z) + b*(z+u)+a
+;with s root of S
+;P(s)= a - b * s_conj
+;P(s_conj)= a - b * s
+;------------------------------------
+(define (P/S [P : flpoly][S : flpoly])
+  (define-values (QP/S RP/S)(flpoly/p-QR P S))
+  (values QP/S
+          (fl- (flpoly-coefficient RP/S 0) (fl* (flpoly-coefficient RP/S 1) (flpoly-coefficient S 1)))
+          (flpoly-coefficient RP/S 1)))
+
+
+;------------------------------------
 ;stage 1 - 0 shifts : generating K-poly's x-scaled around 0
 ;------------------------------------
 (: zero-shift (->* (Nonnegative-Integer flpoly) (flpoly) flpoly))
-(define (zero-shift iterations P [K (flpoly*s (flpoly-diff P) (/ 1.0 (flpoly-degree P)))]) : flpoly
-;(println (list 'Zero-shift P K))
-  (define -p0 (fl* -1.0 (flpoly-coefficient P 0)))
-  (define P- (flpoly-shift P -1)); equal to (P(x)-P(0))/x
-  (for/fold ([Ki K])
-            ([i (in-range iterations)])
-    (flpoly+ (flpoly-shift Ki -1)
-             (flpoly*s P- (fl/ (flpoly-coefficient Ki 0) -p0)))))
-
-(: zero-shift* (->* (Nonnegative-Integer flpoly) (flpoly) flpoly))
-(define (zero-shift* iterations P [K (flpoly*s (flpoly-diff P) (/ 1.0 (flpoly-degree P)))])
+(define (zero-shift iterations P [K (flpoly*s (flpoly-diff P) (/ 1.0 (flpoly-degree P)))])
   (define p0 (flpoly-coefficient P 0))
   (define p1 (flpoly-coefficient P 1))
-  (define P- (flpoly-shift P -1))
   (for/fold ([Ki K])
             ([i (in-range iterations)])
-    (define k0 (flpoly-coefficient K 0))
+    (define k0 (flpoly-coefficient Ki 0))
     (cond
-      [(<= k0 (* (abs p1) 1e-16 10)) (flpoly-shift Ki -1)]
-      [else (flpoly+ (flpoly*s (flpoly-shift Ki -1) (- (/ p0 k0))) P-)])))
+      [(<= (abs k0) (* (abs p1) 1e-16 10)) (flpoly-shift Ki -1)]
+      [else (flpoly-shift (flpoly+ P (flpoly*s Ki (- (/ p0 k0)))) -1)])))
 
 ;------------------------------------
 ;stage 2 - fixed shifts : generating K-poly's x-scaled around (fixed) s
@@ -142,39 +144,35 @@ si+1 = si + P(si)/Ki+1(si)
                      [P : flpoly]
                      [K : flpoly]) : (Values flpoly (flresult Number)(U 'quadratic 'linear 'no-convergence))
 ;(println (list 'fixed-shift iterations s P K))
-  (define u (fl* 2.0 (fl (real-part s))))
+  (define u (fl* -2.0 (fl (real-part s))))
   (define v (fl+ (flexpt (fl (real-part s)) 2.0)(flexpt (fl (imag-part s)) 2.0)))
   (define S (flpolyV> (vector 1.0 u v)))
-  (define-values (QP/S RP/S) (flpoly/p-QR P S))
-  (define b (flpoly-coefficient RP/S 1))
-  (define a (fl- (flpoly-coefficient RP/S 0) (fl* b u)))
+  (define-values (QP/S a b)(P/S P S))
   (define P@s (- a (* b (conjugate s))));short calc for (Peval P s)
   (let loop ([i : Integer 0]
              [tλ-2 : Number 0.0][tλ-1 : Number 0.0]
              [sλ-2 : Number 0.0][sλ-1 : Number 0.0]
-             [Ki : flpoly K])
+             [K : flpoly K])
     (cond
       [(< iterations i)
-       (values Ki
+       (values K
                (flresult s 'max-iterations i (list (list s P@s)))
                'no-convergence)]
       [else
-       (define K* (flpoly*s Ki (fl/ 1.0 (flpoly-coefficient Ki 0))))
-       (define-values (QKi/S RKi/S)(flpoly/p-QR K* S))
-       (define d (flpoly-coefficient RKi/S 1))
-       (define c (fl- (flpoly-coefficient RKi/S 0) (fl* d u)))
-       (define K@s (- c (* d (conjugate s))))
+       (define K* (flpoly*s K (fl/ 1.0 (flpoly-reverse-coefficient K 0))))
+       (define-values (QKi/S c d)(P/S K* S))
+       (define K*@s (- c (* d (conjugate s))))
        (define S* (nextSigma P K* a b c d u v))
-       (define tλ (- s (/ P@s K@s)))
+       (define tλ (- s (/ P@s K*@s)))
        (define sλ (flpoly-coefficient S* 0))
 ;(println (list sλ tλ))
        (cond
          [(converged? sλ-2 sλ-1 sλ)
-          (values Ki
+          (values K*
                   (flresult s 'done i (list (list s P@s)))
                   'quadratic)]
          [(converged? tλ-2 tλ-1 tλ)
-          (values Ki
+          (values K*
                   (flresult s 'done i (list (list s P@s)))
                   'linear)]
          [else
@@ -186,7 +184,7 @@ si+1 = si + P(si)/Ki+1(si)
 ;  With a Posteriori Error Bounds for the Zeros" by M.A. Jenkins, 1969.
 ;
 ; NOTE: we assume (flpoly-coefficient S 2) is 1.0.
-;a b c d are coefficents of the rest polynomials of P/S (a b) and K/S (c d) see fixed-shift
+;a b c d are coefficents based on the rest polynomials of P/S (a b) and K/S (c d) see fixed-shift
 ;u & v are (flpoly-coefficient S 1) & (flpoly-coefficient S 0)
 (define (nextSigma [P : flpoly][K : flpoly][a : Flonum][b : Flonum][c : Flonum][d : Flonum][u : Flonum][v : Flonum]) : flpoly
   (define b1 (fl* -1.0 (fl/ (flpoly-coefficient K 0)
@@ -194,22 +192,24 @@ si+1 = si + P(si)/Ki+1(si)
   (define b2 (fl* -1.0 (fl/ (fl+ (flpoly-coefficient K 1)
                                  (fl* b1 (flpoly-coefficient P 1)))
                             (flpoly-coefficient P 0))))
-  (define a1 (fl- (fl* b c)(fl* a d)))
   (define ua+vb (fl+ (fl* u a)(fl* v b)))
-  (define a2 (fl+ (fl* a c)(fl* ua+vb d)))
-  (define c2 (fl* b1 a1))
-  (define c3 (fl* (fl* b1 b1)(fl+ (fl* a a) (fl* ua+vb b))))
-  (define c4 (fl- (fl* v (fl* b2 a1)) (fl+ c2 c3)))
-  (define c1 (flsum (list (fl* c c)
-                          (fl* u (fl* c d))
-                          (fl* v (fl* d d))
-                          (fl* b1 (fl+ (fl* a c)
-                                       (fl* b (fl+ (fl* u c)(fl* v d)))))
-                          (fl* -1.0 c4))))
+  (define a1 (fl- (fl* b c)(fl* a d)))
+  (define a3 (fl+ (fl* a a) (fl* ua+vb b)))
+  (define a7 (fl+ (fl* a c) (fl* ua+vb d)))
+  (define c1 (fl* v (fl* b2 a1)))
+  (define c2 (fl* b1 a7));was a1 in c++ file
+  (define c3 (fl* (fl* b1 b1) a3))
+  (define c4 (fl- c1 (fl+ c2 c3)))
+  (define temp (flsum (list (fl* c c)
+                            (fl* u (fl* c d))
+                            (fl* v (fl* d d))
+                            (fl* b1 (fl+ (fl* a c)
+                                         (fl* b (fl+ (fl* u c)(fl* v d)))))
+                            (fl* -1.0 c4))))
   (define δu (fl/ (fl+ (fl* u (fl+ c2 c3))
-                       (fl* v (fl+ (fl* b1 a1)(fl* b2 a2))))
-                  (fl* -1.0 c1)))
-  (define δv (fl* v (fl/ c4 c1)))
+                       (fl* v (fl+ (fl* b1 a1)(fl* b2 a7))))
+                  (fl* -1.0 temp)))
+  (define δv (fl* v (fl/ c4 temp)))
   (flpoly> 1.0 (fl+ u δu)(fl+ v δv)))
 
 ; The iterations are computed with the following equation:
@@ -222,18 +222,23 @@ si+1 = si + P(si)/Ki+1(si)
 ;                              b * c - a * d
 ;
 ; This is done using *only* realy arithmetic so it can be done very fast!
-(define (nextK-quadratic-shift [QP/S : flpoly][QKi/S : flpoly]
+(define (nextK-quadratic-shift [QP/S : flpoly][QK/S : flpoly]
                                [a : Flonum][b : Flonum][c : Flonum][d : Flonum][u : Flonum][v : Flonum])
   (define bc-ad (fl- (fl* b c)(fl* a d)))
-  (define ua+vb (fl- (fl* u a)(fl* v b)))
+  (define ua+vb (fl+ (fl* u a)(fl* v b)))
   (define C0 (fl/ (fl+ (fl* a a)(fl* b ua+vb)) bc-ad))
   (define C1 (fl/ (fl+ (fl* a c)(fl* d ua+vb)) bc-ad))
-  (flpoly+ (flpoly*s QKi/S C0)
+  ;!!bc-ad=0!!
+  (flpoly+ (flpoly*s QK/S C0)
            (flpoly*p (flpoly> 1.0 (fl* -1.0 C1)) QP/S)
            (const-flpoly b)))
 ;------------------------------------
 ;stage 3 - variable shifts : generating K-poly's x-scaled around (variable) s
 ;------------------------------------
+; Generate K-Polynomials with variable-shifts that are linear. The shift is
+; computed as:
+;   K_next(z) = 1 / (z - s) * (K(z) - K(s) / P(s) * P(z))
+;   s_next = s - P(s) / K_next(s)
 (define (linear-shift [iterations-Lin : Nonnegative-Integer]
                       [s : Number]
                       [P : flpoly]
@@ -274,11 +279,23 @@ si+1 = si + P(si)/Ki+1(si)
        (define si* (- si Δsi))
        (cond
          [(and (<= 2 i) (not triedQuad?) (< (flabs Δsi) (fl* 0.001 (flabs si*))) (< (flabs (cadar lst)) P@si))
-          ;iterations stalling, try for double root with quadrati shift
+          ;iterations stalling, try for double root with quadratic shift
           (quadratic-shift iterations-Quad si* P K*** Peval Δfct #f iterations-Lin)]
          [else
           (loop (+ i 1) si* K*** lst+)])])))
 
+; Generate K-polynomials with variable-shifts. During variable shifts, the
+; quadratic shift is computed as:
+;                | K0(s1)  K0(s2)  z^2 |
+;                | K1(s1)  K1(s2)    z |
+;                | K2(s1)  K2(s2)    1 |
+;    sigma(z) = __________________________
+;                  | K1(s1)  K2(s1) |
+;                  | K2(s1)  K2(s2) |
+; Where K0, K1, and K2 are successive zero-shifts of the K-polynomial.
+;
+; The K-polynomial shifts are otherwise exactly the same as Stage 2 after
+; accounting for a variable-shift sigma.
 (define (quadratic-shift [iterations-Quad : Nonnegative-Integer]
                          [s : Number]
                          [P : flpoly]
@@ -289,6 +306,7 @@ si+1 = si + P(si)/Ki+1(si)
                          [iterations-Lin : Nonnegative-Integer]) : (flresult Number)
 ;(println (list 'quadratic-shift iterations-Lin s P K triedLin? iterations-Lin))
   (define (go-for-lin [si : Number][Ki : flpoly][i : Integer][lst+ : (Listof (List Number Number))]) : (flresult Number)
+(println '(going-for-lin))
     (cond
          [triedLin? (flresult si 'max-iterations i lst+)]
          [else
@@ -301,44 +319,39 @@ si+1 = si + P(si)/Ki+1(si)
              [Si : flpoly S]
              [Ki : flpoly K]
              [tryFixedShifts? : Boolean #t]
-             [v-1 : Flonum (flpoly-coefficient S 0)]
+             [v-1 : Flonum 0.0]
              [P@s-1 : Flonum 0.0]
              [lst : (Listof (List Number Number)) '()])
     (define u (flpoly-coefficient Si 1))
     (define v (flpoly-coefficient Si 0))
-    (define-values (QP/Si RP/Si)(flpoly/p-QR P S))
-    (define b (flpoly-coefficient RP/Si 1))
-    (define a (fl- (flpoly-coefficient RP/Si 0) (fl* b u)))
+    (define-values (QP/Si a b)(P/S P Si))
     (define sis (flpoly-2°root Si))
     (define-values (s0 s1)
-      (if (< (magnitude (car sis))(magnitude (cadr sis)))
-          (values (car sis)(cadr sis))
-          (values (cadr sis)(car sis))))
+      (if (= 0 (imag-part (car sis)))
+          (if (< (abs (real-part (car sis)))(abs (real-part (cadr sis))))(values (car sis)(cadr sis))(values (cadr sis)(car sis)))
+          (if (< 0 (imag-part (car sis)))(values (car sis)(cadr sis))(values (cadr sis)(car sis)))))
     (define P@s (fl+ (flabs (fl- a (fl* (flreal s0) b)))
                      (flabs (fl* (flimag s0) b))))
     (define lst+ (cons (list s0 P@s) lst))
     (cond
+      [(Δfct lst+)(flresult s0 'done i lst+)]
       [(< iterations-Quad i) (go-for-lin s0 Ki i lst+)]
       ;if roots are not close/imag try linear shift
       [(< (* .01 (abs (real-part s0)))
-          (abs (- (real-part s1)(real-part s0))))
-       ;in c impl. they take the diference of the abs values... why?
+          (abs (- (abs (real-part s1))(abs (real-part s0)))))
        (go-for-lin s0 Ki i lst+)]
       [else
-       (define K*1
+       (define-values (K*1 tfs?)
          (cond
            [(and tryFixedShifts?
                  (< (abs (/ (- v v-1) v)) *kTinyRelStep*)
                  (< P@s P@s-1))
             (define-values (Ki+1 _0 _1) (fixed-shift *innerFixedShiftItereations* s0 Ki P))
-            (set! tryFixedShifts? #f)
-            Ki+1]
-           [else Ki]))
-       (define-values (QKi/Si RKi/Si) (flpoly/p-QR K*1 Si))
-       (define d (flpoly-coefficient RKi/Si 1))
-       (define c (fl- (flpoly-coefficient RKi/Si 0) (fl* d u)))
+            (values Ki+1 #f)]
+           [else (values Ki tryFixedShifts?)]))
+       (define-values (QKi/Si c d)(P/S K*1 Si))
 
-       (define S* (nextSigma QP/Si QKi/Si a b c d u v))
+       (define S* (nextSigma P K*1 a b c d u v))
        (define K*2 (nextK-quadratic-shift QP/Si QKi/Si a b c d u v))
        (define K*3 (flpoly*s K*2 (fl/ 1.0 (flpoly-coefficient K*2 0))))
 
