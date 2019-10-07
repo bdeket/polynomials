@@ -459,7 +459,7 @@
 (define (flpoly-reduce-root-QR [P : flpoly] [r : Flonum]) : (Values flpoly Flonum)
   (define d (flpoly-degree P))
   (cond
-    [(<= d 0)(raise-argument-error 'flpoly-reduce-root "No roots for poly of degree 0" P)]
+    [(<= d 0)(values flpoly-zero (flpoly-coefficient P 0))]
     [else
      (define v : (Vectorof Flonum) (make-vector d 0.0))
      (define s
@@ -475,6 +475,11 @@
     (define-values (Q R) (flpoly-reduce-root-QR P r))
     (check-equal? Q (flpoly> 1.0 1.0))
     (check-= R 0 1e-16))
+  (let ([P (flpoly> 1.0)]
+        [r -1.0])
+    (define-values (Q R) (flpoly-reduce-root-QR P r))
+    (check-equal? Q flpoly-zero)
+    (check-= R 0 1.0))
   (let ([P (flpoly> 1.0 3.0 3.0 1.0)]
         [r -1.0])
     (define-values (Q R) (flpoly-reduce-root-QR P r))
