@@ -156,7 +156,7 @@
                  (define-values (Q R) (flpoly-reduce-root-QR P* ri))
                  (ans-loop Q bounds (cons ri ans))]
                 [else
-                 (define-values (Q R) (flpoly/p-QR P* (flpoly-from-complex-root ri)))
+                 (define-values (Q R) (flpoly/p-QR P* (flpoly-from-roots ri (conjugate ri))))
                  (ans-loop Q bounds (cons ri (cons (conjugate ri) ans)))])]
              [else
               (cond
