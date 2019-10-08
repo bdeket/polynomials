@@ -238,7 +238,6 @@
   (let loop ([j 1]
              [K K]
              [s sss][absP@s_old 0.0][t 0.0])
-    (println K)
     ; Evaluate p at s and compute remainder
     (define-values (qP P@s) (flpoly-reduce-root-QR P s))
     (define absP@s (abs P@s))
@@ -826,7 +825,8 @@
                 epsilon10)
   (check-within (RL (flpoly> 5.899323652745066e+98 -3.268616690736327e+28 -1.8171398662880743e-21 -9.182021624841844e-48 -0.0009582829713641801)
                     (iteration-scheme 11 14 16 0 17 7 19))
-                '(error ()) epsilon.0)
+                '(roots:maxiter ())
+                epsilon.0)
 
 
   ;next-ones have quite a big error comparing P with (flpoly-from-roots (roots P))
@@ -877,7 +877,7 @@
       [else
        0.0]))
 
-  #;(let ();for searching branches
+  (let ();for searching branches
     (define (rdm)
       (* (if (< (random) 0.5) -1.0 1.0)
          (random)
