@@ -96,17 +96,6 @@
     [else 0.0]))
 (define (flpoly-reverse-coefficient [P : flpoly] [n : Integer]) : Flonum
   (flpoly-coefficient P (- (flpoly-degree P) n)))
-(module+ test
-  (check-equal? (flpoly> 0.0 1.1 2.2 3.3) (flpoly< 3.3 2.2 1.1 0.0))
-  (check-equal? (flpoly-degree (flpoly> 0.0 1.1 2.2 3.3)) 2)
-  (check-equal? (flpoly-coefficient (flpoly> 3.3 2.2 1.1 0.0) 2) 2.2)
-  (check-equal? (flpoly-coefficient (flpoly< 0.0 1.1 2.2 3.3) 2) 2.2)
-  (check-equal? (flpoly-coefficient (flpoly< 0.0 1.1 2.2 3.3) 8) 0.0)
-  (check-equal? (flpoly-reverse-coefficient (flpoly> 3.3 2.2 1.1 0.0) 2) 1.1)
-  (check-equal? (flpoly-reverse-coefficient (flpoly< 0.0 1.1 2.2 3.3) 2) 1.1)
-  (check-equal? (flpoly-reverse-coefficient (flpoly< 0.0 1.1 2.2 3.3) 8) 0.0)
-  (check-equal? (flpoly> 0.0 0.0 0.0 1.1 0.1) (make-flpoly #(0.1 1.1) 1))
-  (check-equal? (flpoly-from-roots 1.0 1.0 1.0 1.0) (flpoly> 1.0 -4.0 6.0 -4.0 1.0)))
 
 ;------------------------------------
 ;evaluating the poly
@@ -169,15 +158,6 @@
      (define-values (h pπ pσ)(hornerEFT P t))
      (fl+ h (hornerSum pπ pσ t))]))
 
-(module+ test
-  (check-equal? (compensatedHorner (flpoly> 1.0 2.0 1.0) 0.0) 1.0)
-  (check-equal? (compensatedHorner (flpoly> 1.0 2.0 1.0) 1.0) 4.0)
-  (check-equal? (compensatedHorner (flpoly> 1.0 2.0 1.0) 1.0) 4.0)
-  (let ([P (flpoly> 1.0 1.0 0.0 0.0 3.0 1.0)])
-    (check-equal? (compensatedHorner P 0.0) (Horner P 0.0))
-    (check-equal? (compensatedHorner P 1.0) (Horner P 1.0)))
-  (check-equal? (complexHorner (flpoly> 1.0 2.0 1.0) +i) 0.0+2.0i))
-
 ;------------------------------------
 ;basic operations +-*^Scale
 ;------------------------------------
@@ -199,12 +179,6 @@
               (flsum (map (λ ([P : flpoly])(flpoly-coefficient P i)) Ps))))
   (flpolyV< v))
 
-(module+ test
-  (check-equal? (flpoly+p (flpoly> 4.0 3.0 2.0) (flpoly> 2.0 8.0)) (flpoly> 4.0 5.0 10.0))
-  (check-equal? (flpoly+p (flpoly> 4.0 3.0 2.0) (flpoly> -4.0 2.0 8.0)) (flpoly> 5.0 10.0))
-  (check-equal? (flpoly+p (flpoly> 4.0 3.0 2.0) (flpoly> -4.0 -3.0 -2.0)) flpoly-zero)
-  (check-equal? (flpoly+ (flpoly< 1.0 0.0) (flpoly< 1e-16 0.0)(flpoly< 1e-16 0.0)) (flpoly< 1.0000000000000002 0.0)))
-
 (define (flpoly-p [P1 : flpoly] [P2 : flpoly]) : flpoly
   (define d (max (flpoly-degree P1)(flpoly-degree P2)))
   (define v (vector-copy(if (< (flpoly-degree P1)(flpoly-degree P2))
@@ -220,13 +194,6 @@
     [(null? Pr) P-]
     [else (flpoly*s (apply flpoly+ P- Pr) -1.0)]))
 
-(module+ test
-  (check-equal? (flpoly-p (flpoly> 4.0 3.0 2.0) (flpoly> 2.0 8.0)) (flpoly> 4.0 1.0 -6.0))
-  (check-equal? (flpoly-p (flpoly> 4.0 3.0 2.0) (flpoly> 4.0 2.0 8.0)) (flpoly> 1.0 -6.0))
-  (check-equal? (flpoly-p (flpoly> 4.0 3.0 2.0) (flpoly> 4.0 3.0 2.0)) flpoly-zero)
-  (check-equal? (flpoly- (flpoly< 1e-16)(flpoly< -1.0)(flpoly< -1e-16)) (flpoly> 1.0000000000000002)))
-
-
 (define (flpoly*s [P : flpoly] [s : Flonum]) : flpoly
   (cond
     [(= s 0.0)(make-flpoly (vector s) 0)]
@@ -234,8 +201,6 @@
                          ([ai (in-vector (flpoly-v P))])
                          (fl* ai s))
                        (flpoly-degree P))]))
-(module+ test
-  (check-equal? (flpoly*s (flpoly> 4.0 3.0 2.0) 2.0) (flpoly> 8.0 6.0 4.0)))
 
 (define (flpoly*p [P1 : flpoly] [P2 : flpoly]) : flpoly
   (define d (+ (flpoly-degree P1)(flpoly-degree P2)))
@@ -297,14 +262,6 @@
     [(null? Pr) (flpoly-copy Pf)]
     [else (apply flpoly* (flpoly*p Pf (car Pr)) (cdr Pr))]))
 
-(module+ test
-  (check-equal? (flpoly*p (flpoly> 4.0 1.0)(flpoly> 2.0 2.0)) (flpoly> 8.0 10.0 2.0))
-  (check-equal? (flpoly*-accurate  (flpoly> 4.0 1.0)(flpoly> 2.0 2.0)) (flpoly> 8.0 10.0 2.0))
-  (check-equal? (flpoly*p (flpoly> 1.0 1.0)(flpoly*p (flpoly> 1.0 1.0)(flpoly> 1.0 1.0))) (flpoly> 1.0 3.0 3.0 1.0))
-  (check-equal? (flpoly*-accurate  (flpoly> 1.0 1.0)(flpoly> 1.0 1.0)(flpoly> 1.0 1.0)) (flpoly> 1.0 3.0 3.0 1.0))
-  (check-equal? (flpoly*-accurate  (flpoly> 4.0 8.0 1.0)(flpoly> 2.0 2.0 .5 .4))
-                (flpoly*p (flpoly> 4.0 8.0 1.0)(flpoly> 2.0 2.0 .5 .4))))
-
 ;------------------------------------
 ;expt and subst shift reverse
 ;------------------------------------
@@ -318,11 +275,6 @@
      =>
      (λ(n/2)(let ([Pi (flpoly-expt P n/2)])(flpoly*p Pi Pi)))]
     [else (flpoly*p P (flpoly-expt P (- n 1)))]))
-(module+ test
-  (check-equal? (flpoly-expt (flpoly> 1.0 2.0) 0) flpoly-one)
-  (check-equal? (flpoly-expt (flpoly> 1.0 2.0) 1) (flpoly> 1.0 2.0))
-  (check-equal? (flpoly-expt (flpoly> 1.0 2.0) 2) (flpoly> 1.0 4.0 4.0))
-  (check-equal? (flpoly-expt (flpoly> 1.0 1.0) 5) (flpoly> 1.0 5.0 10.0 10.0 5.0 1.0)))
 
 ;TODO:eliminate errorcreep?
 (define (flpoly-subst [P : flpoly] [x : flpoly]) : flpoly
@@ -335,10 +287,6 @@
       (values (cons (flpoly*s x^i (flpoly-coefficient P i)) sum)
               x^i)))
   (apply flpoly+ (const-flpoly (flpoly-coefficient P 0)) sum))
-(module+ test
-  (check-equal? (flpoly-subst (flpoly> 1.0 0.0 0.0) (flpoly> 1.0 1.0)) (flpoly> 1.0 2.0 1.0))
-  (check-equal? (flpoly-subst (flpoly> 1.0 0.0 0.0 0.0 0.0) (flpoly> 1.0 1.0)) (flpoly> 1.0 4.0 6.0 4.0 1.0))
-  (check-equal? (flpoly-subst (flpoly> 1.0 0.0 2.0 0.0 0.0) (flpoly> 1.0 1.0)) (flpoly> 1.0 4.0 8.0 8.0 3.0)))
 
 (define (flpoly-shift [P : flpoly] [n : Integer]) : flpoly
   (define d (flpoly-degree P))
@@ -350,19 +298,14 @@
        (if (< d* 0)
            (make-flpoly (vector 0.0) 0)
            (make-flpoly (vector-drop (flpoly-v P) (abs n)) d*))]))
-(module+ test
-  (check-equal? (flpoly-shift (flpoly> 4.0 3.0 2.0) 0) (flpoly> 4.0 3.0 2.0))
-  (check-equal? (flpoly-shift (flpoly> 4.0 3.0 2.0) 2) (flpoly> 4.0 3.0 2.0 0.0 0.0))
-  (check-equal? (flpoly-shift (flpoly> 4.0 3.0 2.0) -2) (flpoly> 4.0))
-  (check-equal? (flpoly-shift (flpoly> 4.0 3.0 2.0) -3) (flpoly> 0.0)))
 
-(define (flpoly-reverse [P : flpoly][n : Nonnegative-Integer (flpoly-degree P)]) : flpoly
+#;(define (flpoly-reverse [P : flpoly][n : Nonnegative-Integer (flpoly-degree P)]) : flpoly
   ((if (= (flpoly-degree P) n)
        values
        (λ ([P : flpoly])
          (flpoly-shift P (- n (flpoly-degree P)))))
    (flpolyV> (flpoly-v P))))
-(module+ test
+#;(module+ test
   (check-equal? (flpoly-reverse (flpoly> 3.0 2.0 1.0)) (flpoly> 1.0 2.0 3.0))
   (check-equal? (flpoly-reverse (flpoly> 3.0 2.0 1.0 0.0)) (flpoly> 0.0 1.0 2.0 3.0))
   (check-equal? (flpoly-reverse (flpoly-reverse (flpoly> 3.0 2.0 1.0 0.0))) (flpoly> 3.0 2.0 1.0))
@@ -389,10 +332,6 @@
              (fl* v (fl i)))
            (- n 1))]))
      (make-flpoly (inner (flpoly-v P) n) d*)]))
-(module+ test
-  (check-equal? (flpoly-diff (flpoly> 1.0 1.0 1.0 1.0) 1) (flpoly> 3.0 2.0 1.0))
-  (check-equal? (flpoly-diff (flpoly> 1.0 1.0 1.0 1.0) 2) (flpoly> 6.0 2.0))
-  (check-equal? (flpoly-diff (flpoly> 1.0 1.0) 3) flpoly-zero))
 
 (: flpoly-int (->* (flpoly) (Nonnegative-Integer) flpoly))
 (define (flpoly-int P [n 1]) : flpoly
@@ -409,9 +348,6 @@
         (flpoly-degree P))
        1)
       (- n 1))]))
-(module+ test
-  (check-equal? (flpoly-int (flpoly> 1.0 1.0 1.0 1.0) 1) (flpoly> (fl 1/4) (fl 1/3) (fl 1/2) 1.0 0.0))
-  (check-equal? (flpoly-int (flpoly> 1.0 1.0 1.0) 2) (flpoly> (fl 1/12) (fl 1/6) (fl 1/2) 0.0 0.0)))
 
 ;------------------------------------
 ;division
@@ -437,24 +373,6 @@
                                     (flpoly-coefficient /p (- j k)))))))
      (values (make-flpoly Q dQ)
              (flpolyV< (vector-take R dd)))]))
-(module+ test
-  (let ([P (flpoly> 1.0 2.0 1.0)]
-        [/p (flpoly> 1.0 1.0)])
-    (define-values (Q R) (flpoly/p-QR P /p))
-    (check-equal? Q (flpoly> 1.0 1.0))
-    (check-equal? (flpoly-degree R) 0)
-    (check-= (flpoly-coefficient R 0) 0 1e-16))
-  (let ([P (flpoly> 1.0 3.0 3.0 1.0)]
-        [/p (flpoly> 1.0 1.0)])
-    (define-values (Q R) (flpoly/p-QR P /p))
-    (check-equal? Q (flpoly> 1.0 2.0 1.0))
-    (check-equal? (flpoly-degree R) 0)
-    (check-= (flpoly-coefficient R 0) 0 1e-16))
-  (let ([P (flpoly> 1.0 3.0 4.0 2.0)]
-        [/p (flpoly> 1.0 2.0 1.0)])
-    (define-values (Q R) (flpoly/p-QR P /p))
-    (check-equal? Q (flpoly> 1.0 1.0))
-    (check-equal? R (flpoly> 1.0 1.0))))
 
 (define (flpoly-reduce-root-QR [P : flpoly] [r : Flonum]) : (Values flpoly Flonum)
   (define d (flpoly-degree P))
@@ -469,27 +387,7 @@
          (define s+ (fl+ (* r s) (flpoly-coefficient P i)))
          s+))
      (values (make-flpoly v (- d 1)) s)]))
-(module+ test
-  (let ([P (flpoly> 1.0 2.0 1.0)]
-        [r -1.0])
-    (define-values (Q R) (flpoly-reduce-root-QR P r))
-    (check-equal? Q (flpoly> 1.0 1.0))
-    (check-= R 0 1e-16))
-  (let ([P (flpoly> 1.0)]
-        [r -1.0])
-    (define-values (Q R) (flpoly-reduce-root-QR P r))
-    (check-equal? Q flpoly-zero)
-    (check-= R 0 1.0))
-  (let ([P (flpoly> 1.0 3.0 3.0 1.0)]
-        [r -1.0])
-    (define-values (Q R) (flpoly-reduce-root-QR P r))
-    (check-equal? Q (flpoly> 1.0 2.0 1.0))
-    (check-= R 0 1e-16))
-  (let ([P (flpoly> 5.0 2.0 -3.0)]
-        [r 3.0])
-    (define-values (Q R) (flpoly-reduce-root-QR P r))
-    (check-equal? Q (flpoly> 5.0 17.0))
-    (check-= R 48 1e-16)))
+
 
 ;------------------------------------
 ;absolute coefficient
@@ -497,8 +395,6 @@
 (define (flpoly->absolute-coefficients [P : flpoly])
   (make-flpoly (for/vector : (Vectorof Flonum)([v : Flonum(in-vector (flpoly-v P))])(abs v))
                (flpoly-degree P)))
-(module+ test
-  (check-equal? (flpoly->absolute-coefficients (flpoly> -1.0 2.0 -1.0)) (flpoly> 1.0 2.0 1.0)))
 
 ;------------------------------------
 ;checking how much improvement the Horner/Horner+/compensatedHorner brings
