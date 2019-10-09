@@ -62,7 +62,7 @@ si+1 = si + P(si)/Ki+1(si)
                              [x_0 : (U Number (List Number Number)) (* ϕ (roots-mod-lower-bound P))]
                              #:checkΔ [Δfct : EndFct Ward-endfct]
                              #:iterations [iterations : Positive-Integer 20]
-                             #:poly-eval [Peval : cPevaluator complexHorner]
+                             #:poly-eval [Peval : cPevaluator fl/cHorner]
                              #:zero-shift-iterations [0shiftN : Positive-Integer iterations]
                              #:fixed-shift-tries [FshiftN : Positive-Integer iterations]
                              #:fixed-shift-iteration-multiplier [FshiftN* : Positive-Integer iterations]
@@ -231,7 +231,7 @@ si+1 = si + P(si)/Ki+1(si)
   ;!!bc-ad=0!!
   (flpoly+ (flpoly*s QK/S C0)
            (flpoly*p (flpoly> 1.0 (fl* -1.0 C1)) QP/S)
-           (const-flpoly b)))
+           (flpoly-const b)))
 ;------------------------------------
 ;stage 3 - variable shifts : generating K-poly's x-scaled around (variable) s
 ;------------------------------------

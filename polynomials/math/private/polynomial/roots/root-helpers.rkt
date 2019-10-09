@@ -6,6 +6,18 @@
 
 (provide (all-defined-out))
 
+(define-type cPevaluator (case-> (-> flpoly Flonum Flonum)
+                                 (-> flpoly Number Number)));<=why can't this be (flpoly Number Float-Complex) (error for the flonum? case)
+(: fl/cHorner cPevaluator)
+(define (fl/cHorner p x)
+  (local-require (only-in "../poly.rkt" Horner))
+  (cond
+    [(flonum? x) (flHorner p x)]
+    [else (Horner p x)]))
+(define (fl/c [n : Number])
+  (local-require (only-in "../poly-flonumC.rkt" flc))
+  (if (real? n) (fl n) (flc n)))
+
 ;------------------------------------
 ;iterative-root result
 ;------------------------------------

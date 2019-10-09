@@ -59,7 +59,7 @@
   (define dx : Flonum
     (let loop ([x  x1]
                [xm (* 0.1 x1)])
-      (if (fl<= (compensatedHorner pt xm) 0.0)
+      (if (fl<= (compensatedflHorner pt xm) 0.0)
           x
           (loop xm (fl* 0.1 xm)))))
   (define pt* (flpoly-diff pt))
@@ -68,14 +68,14 @@
                [dx dx])
       (if (fl<= (flabs (fl/ dx x)) 0.005)
           x
-          (let ([δ (fl/ (compensatedHorner pt x)(compensatedHorner pt* x))])(loop (fl- x δ) δ)))))
+          (let ([δ (fl/ (compensatedflHorner pt x)(compensatedflHorner pt* x))])(loop (fl- x δ) δ)))))
   x2)
 (define (roots-mod-upper-bound [P : flpoly]) : Flonum
   (define pt (flpoly->absolute-coefficients P))
   (vector-set! (flpoly-v pt) (flpoly-degree pt) (fl* -1.0 (flpoly-coefficient pt (flpoly-degree pt))))
   (flresult-root
    (Newton-flroot pt
-                  (or (for/or : (Option Flonum)([i (in-naturals)])(if (< 0 (compensatedHorner pt (fl i)))#f(fl i))) 0.0)
+                  (or (for/or : (Option Flonum)([i (in-naturals)])(if (< 0 (compensatedflHorner pt (fl i)))#f(fl i))) 0.0)
                   #:checkΔ (λ ([rts : (Listof (List Flonum Flonum))]) : Boolean
                              (cond
                                [(or (null? rts)(null? (cdr rts))) #f]

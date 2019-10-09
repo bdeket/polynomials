@@ -10,7 +10,7 @@
                        [x_0 : (U Flonum (List Flonum Flonum)) 0.0]
                        #:checkΔ [Δfct : flEndFct flendfct]
                        #:iterations [iterations : Positive-Integer 100]
-                       #:poly-eval [Peval : flPevaluator Horner]) : (flresult Flonum)
+                       #:poly-eval [Peval : (-> flpoly Flonum Flonum) flHorner]) : (flresult Flonum)
   (define dP (flpoly-diff P))
   (let loop : (flresult Flonum)
     ([i   : Integer 0]

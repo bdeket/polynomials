@@ -1,12 +1,13 @@
 #lang typed/racket/base
 
+(require math/polynomials
+         math/flonum)
+
 (require typed/rackunit)
 
 ;------------------------------------------------------------------------------------
 ;-  tests for flpoly
 ;------------------------------------------------------------------------------------
-(require math/private/polynomial/poly-flonum
-         math/flonum)
 
 ;  Constructors/accessors
 (check-equal? (flpoly> 0.0 1.1 2.2 3.3) (flpoly< 3.3 2.2 1.1 0.0))
@@ -118,3 +119,13 @@
 
 ;  Absolute coefficients
 (check-equal? (flpoly->absolute-coefficients (flpoly> -1.0 2.0 -1.0)) (flpoly> 1.0 2.0 1.0))
+
+;------------------------------------------------------------------------------------
+;-  tests for poly
+;------------------------------------------------------------------------------------
+;testing cross type functionality
+(check-equal? (poly-diff (poly+ (poly> 1 2. 3)
+                                (poly* (poly< 1+i 2+i)
+                                       (poly> 2 9))))
+              (flcpoly> 4.0+0.0i))
+(check-equal? (Horner (poly> 1 2 3) 4+0.i) 27.0+0.0i)

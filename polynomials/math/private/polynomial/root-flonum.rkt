@@ -9,7 +9,6 @@
          "roots/root-Newton-flonum.rkt"
          "roots/root-JT-flonum.rkt")
 (provide (all-from-out
-          "poly-flonum.rkt"
           "roots/root-helpers.rkt"
           "roots/root-bounds.rkt"
           "roots/root-closedform.rkt"
@@ -23,7 +22,7 @@
                        [x_0 : (U Flonum (List Flonum Flonum)) (roots-interval P)]
                        #:checkΔ [Δfct : flEndFct flendfct]
                        #:iterations [iterations : Positive-Integer 100]
-                       #:poly-eval [Peval : (-> flpoly Flonum Flonum) Horner]) : (flresult Flonum)
+                       #:poly-eval [Peval : (-> flpoly Flonum Flonum) flHorner]) : (flresult Flonum)
   (define (Pfct [x : Flonum])(Peval P x))
   (define (inner [i : Integer][x- : Flonum][y- : Flonum][x+ : Flonum][y+ : Flonum][lst : (Listof (List Flonum Flonum))]) : (flresult Flonum)
     (define xm (fl/ (fl+ x- x+) 2.0))
@@ -43,7 +42,7 @@
                        [x_0 : (U Flonum (List Flonum Flonum)) (roots-interval P)]
                        #:checkΔ [Δfct : flEndFct flendfct]
                        #:iterations [iterations : Positive-Integer 100]
-                       #:poly-eval [Peval : (-> flpoly Flonum Flonum) Horner]) : (flresult Flonum)
+                       #:poly-eval [Peval : (-> flpoly Flonum Flonum) flHorner]) : (flresult Flonum)
   (define (Pfct [x : Flonum])(Peval P x))
   (define (f [x- : Flonum][y- : Flonum][x+ : Flonum][y+ : Flonum]) (fl- x+ (fl* y+ (fl/ (fl- x+ x-)(fl- y+ y-)))))
   (define (inner [i : Integer][x- : Flonum][y- : Flonum][x+ : Flonum][y+ : Flonum][lst : (Listof (List Flonum Flonum))]) : (flresult Flonum)
@@ -65,13 +64,13 @@
                        [x_0 : (U Flonum (List Flonum Flonum)) 0.0]
                        #:checkΔ [Δfct : EndFct endfct]
                        #:iterations [iterations : Positive-Integer 100]
-                       #:poly-eval [Peval : (case-> (-> flpoly Flonum Flonum)(-> flpoly Number Number)) complexHorner]) : (flresult Number)
-  (define (Pfct [x : Number])(Peval P x))
+                       #:poly-eval [Peval : (case-> (-> flpoly Flonum Flonum)(-> flpoly Number Number)) fl/cHorner]) : (flresult Flonum-Complex)
+  (define (Pfct [x : Flonum-Complex])(fl/c (Peval P x)))
   (define (inner [i : Integer]
-                 [x0 : Number][y0 : Number ]
-                 [x1 : Number][y1 : Number ]
-                 [x2 : Number][y2 : Number ]
-                 [lst : (Listof (List Number Number))]) : (flresult Number)
+                 [x0 : Flonum-Complex][y0 : Flonum-Complex]
+                 [x1 : Flonum-Complex][y1 : Flonum-Complex]
+                 [x2 : Flonum-Complex][y2 : Flonum-Complex]
+                 [lst : (Listof (List Flonum-Complex Flonum-Complex))]) : (flresult Flonum-Complex)
     (define q (/ (- x2 x1)(- x1 x0)))
     (define A (+ (* q y2) (* -1 q (+ 1 q) y1) (* q q y0)))
     (define B (+ (* (+ (* 2 q) 1) y2) (* -1 (expt (+ 1 q) 2) y1) (* q q y0)))
@@ -81,7 +80,7 @@
     (define Q2 (+ B D))
     (define Q (if (< (magnitude Q1)(magnitude Q2))Q2 Q1))
     (define δ (* (- x2 x1)(/ (* 2 C) Q)))
-    (define x3 (- x2 δ))
+    (define x3 (fl/c (- x2 δ)))
     (define y3 (Pfct x3))
     (define lst+ (cons (list x3 y3) lst))
     (cond
@@ -97,15 +96,15 @@
                          [x_0 : (U Number (List Number Number)) 0.0]
                          #:checkΔ [Δfct : EndFct endfct]
                          #:iterations [iterations : Positive-Integer 100]
-                         #:poly-eval [Peval : (-> flpoly Number Number) complexHorner]) : (flresult Number)
+                         #:poly-eval [Peval : (-> flpoly Number Number) fl/cHorner]) : (flresult Flonum-Complex)
   (define dP (flpoly-diff P))
   (define d²P (flpoly-diff dP))
   (define n (flpoly-degree P))
-  (let loop : (flresult Number)
+  (let loop : (flresult Flonum-Complex)
     ([i   : Integer 0]
-     [x_k : Number (if (list? x_0) (/ (+ (car x_0)(cadr x_0)) 2.0) x_0)]
-     [lst : (Listof (List Number Number)) '()])
-    (define y_k (Peval P x_k))
+     [x_k : Flonum-Complex (fl/c (if (list? x_0) (/ (+ (car x_0)(cadr x_0)) 2.0) x_0))]
+     [lst : (Listof (List Flonum-Complex Flonum-Complex)) '()])
+    (define y_k (fl/c (Peval P x_k)))
     (define lst+ (cons (list x_k y_k) lst))
     (cond
       [(Δfct lst+) (flresult x_k 'done i lst+)]
@@ -121,7 +120,7 @@
        (cond
          [(= N 0) (flresult x_k 'local-extremum i lst+)]
          [else
-          (loop (+ i 1) (- x_k (/ n N)) lst+)])])))
+          (loop (+ i 1) (fl/c (- x_k (/ n N))) lst+)])])))
 
 
 
@@ -145,7 +144,7 @@
         [(= (flpoly-degree P*) 2) (append ans (flpoly-2°root P*))]
         [(= (flpoly-degree P*) 3) (append ans (flpoly-3°root P*))]
         [else
-         (let root-loop ([rslt : (flresult Number) (Laguerre-flroot P*)])
+         (let root-loop ([rslt : (flresult Flonum-Complex) (Laguerre-flroot P*)])
 (println (list '--> (flresult-root rslt)(flresult-endmsg rslt)))
            (define bounds (inspect-iterations rslt))
            (case (flresult-endmsg rslt)
