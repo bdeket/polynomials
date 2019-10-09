@@ -29,7 +29,7 @@ of the polynomial.
 
 @section[#:tag "polynomials:types"]{Types, Predicates and Accessors}
 
-For now the polynomial is defined in 4 varieties. Exact-Rational: @racket[epoly?], Real: @racket[flpoly?],
+For now the polynomial is defined in 4 varieties. Exact-Rational @racket[epoly?], Real: @racket[flpoly?],
 Exact-Complex @racket[ecpoly?] and Float-Complex @racket[flcpoly?]. In what follows usually only the general poly functions are
 described. For specific ones add e,fl,ec or flc to poly.
 
@@ -64,7 +64,7 @@ will return the coefficient starting from the highest degree. In other words:
               @defproc[(polyV> [V (Vectorof Number)]) poly?]
               @defproc[(polyL> [L (Listof Number)])   poly?]
               @defproc[(poly>  [a Number] ...)        poly?])]
-Create a polynomial by vector, list or individual arguments. Coefficient of biggest degree last (>) or first (<).
+Create a polynomial by vector, list or individual arguments. Coefficient of biggest degree last (<) or first (>).
 
 The specific constructors are:
 @deftogether[(@defproc[(epoly>   [a Exact-Rational] ...) epoly?]
@@ -116,7 +116,7 @@ Multiply the polynomial by a scalar
               @defproc[(poly- [P1 poly?][P2 poly?] ...) poly?]
               @defproc[(poly* [P1 poly?][P2 poly?] ...) poly?]
               @defproc[(poly-expt [P1 poly] [e Nonnegative-Integer]) poly?])]
-Basic operations + - * expt for polynomials.
+Basic operations +, -, * and expt for polynomials.
 
 @defproc[(flpoly*-accurate [P1 flpoly?][P2 flpoly?] ...) flpoly?]
 flpoly*-accurate agregates all terms of the intermediate sums first.
@@ -133,7 +133,7 @@ Substitute the variable x of P1 by P2
 
 @defproc[(poly-shift [P1 poly?][i Integer]) poly?]
 Shift the coefficients of P1 up or down. Coefficients with an index lower than zero will be dropped.
-As far as no coefficients are dropped, this is equal to multiplying/deviding by x^i.
+As far as no coefficients are dropped, this is equal to multiplying/dividing by x^i.
 
 @deftogether[(@defproc[(poly-diff [P1 poly?] [i Nonnegative-Integer 1]) poly?]
               @defproc[(poly-int [P1 poly?] [i Nonnegative-Integer 1]) poly?])]

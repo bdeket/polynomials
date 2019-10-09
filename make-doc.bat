@@ -1,0 +1,1 @@
+e:\PortableApps\Racket\raco.bat scribble --html --dest docs polynomials\math\scribblings\math-polynomials.scrbl
