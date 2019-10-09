@@ -13,10 +13,12 @@ how-to-use
 ----------
 
 installation:
-    raco pkg install git://github.com/bdeket/polynomials/?path=polynomials
+
+	raco pkg install git://github.com/bdeket/polynomials/?path=polynomials
 
 use:
-    (require math/polynomials)
+
+	(require math/polynomials)
 
 documentation:
-[doc folder](http://htmlpreview.github.io/?https://raw.githubusercontent.com/bdeket/polynomials/master/docs/index.html)
+[doc folder](http://htmlpreview.github.io/?https://raw.githubusercontent.com/bdeket/polynomials/master/docs/math-polynomials.html)
