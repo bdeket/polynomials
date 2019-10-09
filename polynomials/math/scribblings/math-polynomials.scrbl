@@ -51,7 +51,7 @@ Return the degree or the size of the coefficient-vector for the polynomial. The 
               @defproc[(poly-reverse-coefficient [P poly?][i Integer])   Number])]
 Get coefficient at position i. If i is too large or to small, 0 will be returned. The reverse form
 will return the coefficient starting from the highest degree. In other words:
-@racket[(poly-reverse-coefficient P i)] is equivalent with @racket[(poly-coefficient P (- degree i))]
+@racket[(poly-reverse-coefficient P i)] is equivalent with @racket[(poly-coefficient P (- (poly-degree P) i))]
 
 @;{==================================================================================================}
 
@@ -115,7 +115,7 @@ Multiply the polynomial by a scalar
 @deftogether[(@defproc[(poly+ [P1 poly?][P2 poly?] ...) poly?]
               @defproc[(poly- [P1 poly?][P2 poly?] ...) poly?]
               @defproc[(poly* [P1 poly?][P2 poly?] ...) poly?]
-              @defproc[(poly-expt [P1 poly] [e Nonnegative-Integer]) poly?])]
+              @defproc[(poly-expt [P1 poly?] [e Nonnegative-Integer]) poly?])]
 Basic operations +, -, * and expt for polynomials.
 
 @defproc[(flpoly*-accurate [P1 flpoly?][P2 flpoly?] ...) flpoly?]
