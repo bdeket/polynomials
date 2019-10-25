@@ -10,24 +10,22 @@
 (define (flc [a : Number]): Float-Complex (make-rectangular (fl (real-part a))(fl (imag-part a))))
 (define (flcsum [L : (Listof Float-Complex)]) : Float-Complex (flc (apply + L)))
   
-(make-poly-base flc Float-Complex
-                flc = + - * / flcsum)
-(make-poly-cplxfct flc Float-Complex
-                   flcpoly flcpoly-v flcpoly-degree flcpoly*
-                   flc = + - * / flcsum)
+(make-poly-cplxfct [flc : Float-Complex]
+                   flc + - * / #:= =)
 
-(define (flcpoly->absolute-coefficients [P : flcpoly])
+(define (flcpoly->absolute-coefficients [P : flcPoly])
   (local-require "poly-flonum.rkt" math/flonum)
   (flpoly (for/vector : (Vectorof Flonum)
             ([v : Float-Complex (in-vector (flcpoly-v P))])(fl (magnitude v)))
           (flcpoly-degree P)))
 
 (module+ test
-  (flcpoly-const (flc 3/8))
+  (define flcpoly> flcpoly/descending)
+  (flcpoly-constant (flc 3/8))
   flcpoly-zero
   flcpoly-one
   (flcpoly-copy flcpoly-zero)
-  (flcpolyV< (vector (flc 0) (flc 1) (flc 2) (flc 3/4) (flc 0)))
+  (flcvector/ascending->poly (vector (flc 0) (flc 1) (flc 2) (flc 3/4) (flc 0)))
   (flcpoly> (flc 5) (flc 4) (flc 3) (flc 2) (flc 1) (flc 0))
 
   (flcpoly+ (flcpoly> (flc 5) (flc 4) (flc 3) (flc 2) (flc 1) (flc 0))

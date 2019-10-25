@@ -11,20 +11,18 @@
 (define i.bf (bf-complex (bf 0) (bf 1)))
 (define (bfsum [L : (Listof Bigfloat)])(apply bf+ L))
 
-(make-poly-base bf Bigfloat
-                bf bf= bf+ bf- bf* bf/ bfsum)
-(make-poly-realfct bf Bigfloat
-                   bfpoly bfpoly-v bfpoly-degree bfpoly*
-                   Bigfloat-Complex bf-real bf-imag bf-complex
-                   bf bf= bf+ bf- bf* bf/
-                   bfsum bfabs)
+(make-poly-realfct [bf : Bigfloat]
+                   [bf-complex : Bigfloat-Complex] bf-real bf-imag 
+                   bf bf+ bf- bf* bf/ bfabs #:= bf=)
 
 (module+ test
-  (bfpoly-const (bf 3/8))
+  (define bfpoly> bfpoly/descending)
+  
+  (bfpoly-constant (bf 3/8))
   bfpoly-zero
   bfpoly-one
   (bfpoly-copy bfpoly-zero)
-  (bfpolyV< (vector (bf 0) (bf 1) (bf 2) (bf 3/4) (bf 0)))
+  (bfvector/ascending->poly (vector (bf 0) (bf 1) (bf 2) (bf 3/4) (bf 0)))
   (bfpoly> (bf 5) (bf 4) (bf 3) (bf 2) (bf 1) (bf 0))
 
   (bfpoly+ (bfpoly> (bf 5) (bf 4) (bf 3) (bf 2) (bf 1) (bf 0))

@@ -142,24 +142,24 @@
 ;------------------------------------------------------------------------------------
 ;-  Constructors
 ;------------------------------------------------------------------------------------
-(define (polyV< [V : (Vectorof Number)]) : poly
+(define (vector/ascending->poly [V : (Vectorof Number)]) : poly
   (define ts (for/list : (Listof (U 'e 'ec 'fl 'flc)) ([v V])(tower-number v)))
   (cond
     [(or (member 'flc ts)
          (and (member 'fl ts)(member 'ec ts)))
-     (flcpolyV< (for/vector : (Vectorof Float-Complex) ([v V])(flc v)))]
+     (flcvector/ascending->poly (for/vector : (Vectorof Float-Complex) ([v V])(flc v)))]
     [(member 'fl ts)
-     (flpolyV< (for/vector : (Vectorof Flonum) ([v (cast V (Vectorof Real))])(fl v)))]
+     (flvector/ascending->poly (for/vector : (Vectorof Flonum) ([v (cast V (Vectorof Real))])(fl v)))]
     [(member 'ec ts)
-     (ecpolyV< (cast V (Vectorof Exact-Number)))]
+     (ecvector/ascending->poly (cast V (Vectorof Exact-Number)))]
     [else
-     (epolyV< (cast V (Vectorof Exact-Rational)))]))
-(define (polyL< [L : (Listof Number)]) : poly (polyV< (list->vector L)))
-(define (poly< [a0 : Number] . [ar : Number *]) : poly (polyL< (cons a0 ar)))
-(define (polyV> [V : (Vectorof Number)]) : poly (polyL> (vector->list V)))
-(define (polyL> [L : (Listof Number)]) : poly (polyV< (list->vector (reverse L))))
-(define (poly> [a0 : Number] . [ar : Number *]) : poly (polyL> (cons a0 ar)))
-(define (poly-const [a : Number]) : poly (polyV< (vector a)))
+     (evector/ascending->poly (cast V (Vectorof Exact-Rational)))]))
+(define (list/ascending->poly [L : (Listof Number)]) : poly (vector/ascending->poly (list->vector L)))
+(define (poly/ascending [a0 : Number] . [ar : Number *]) : poly (list/ascending->poly (cons a0 ar)))
+(define (vector/descending->poly [V : (Vectorof Number)]) : poly (list/descending->poly (vector->list V)))
+(define (list/descending->poly [L : (Listof Number)]) : poly (vector/ascending->poly (list->vector (reverse L))))
+(define (poly/descending [a0 : Number] . [ar : Number *]) : poly (list/descending->poly (cons a0 ar)))
+(define (poly-constant [a : Number]) : poly (vector/ascending->poly (vector a)))
 
 (define poly-zero : poly epoly-zero)
 (define poly-one  : poly  epoly-one)
@@ -187,7 +187,7 @@
 ;------------------------------------------------------------------------------------
 ;-  Evaluators
 ;------------------------------------------------------------------------------------
-(make-pol+val Horner Number)
+(make-pol+val poly-eval Number)
 ;------------------------------------------------------------------------------------
 ;-  Basic operations
 ;------------------------------------------------------------------------------------
@@ -195,6 +195,8 @@
 (selector poly-expt P i)
 
 (make-pol+val poly*s poly)
+(make-pol+val poly/s poly)
+(make-pol+val poly-scale poly)
 
 (make-2poly poly+p poly)
 (define (poly+ [P1 : poly] . [P2 : poly *])
@@ -220,7 +222,7 @@
 (make-2poly poly/p-QR (Values poly poly))
 (make-pol+val poly-reduce-root-QR (Values poly Number))
 
-(make-2poly poly-subst poly)
+(make-2poly poly-substitute poly)
 
 (: poly-shift (-> poly Integer poly))
 (selector poly-shift P i)
@@ -228,3 +230,5 @@
 (selector poly-diff P [i 1])
 (: poly-int (->* (poly) (Nonnegative-Integer) poly))
 (selector poly-int P [i 1])
+(: poly->coefficients-list (-> poly (Listof (List (List Nonnegative-Integer) Number))))
+(selector poly->coefficients-list P)

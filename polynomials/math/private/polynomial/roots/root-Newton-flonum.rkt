@@ -32,6 +32,7 @@
           (loop (+ i 1) (- x_k δ) δ lst+)])])))
 (module+ test
   (require typed/rackunit)
+  (define flpoly> flpoly/descending)
   (check-= (flresult-root (Newton-flroot (flpoly> 1.0 -1.0))) 1.0 1e-16)
   (check-= (flresult-root (Newton-flroot (flpoly-from-roots 3.0 -2.0) 2.0)) 3.0 1e-16)
   (check-= (flresult-root (Newton-flroot (flpoly-from-roots -2.632993161855452 -0.18350341907227397 -0.18350341907227397) -2.0))

@@ -23,26 +23,25 @@
          (* (real-part e1)(imag-part e2)))
       d)))
 
-(make-poly-base ec Exact-Number
+#;(make-poly-base ec Exact-Number
                 inexact->exact = + - e* e/
                 (λ ([L : (Listof Exact-Number)])(apply + L)))
-(make-poly-cplxfct ec Exact-Number
-                   ecpoly ecpoly-v ecpoly-degree ecpoly*
-                   inexact->exact = + - e* e/
-                   (λ ([L : (Listof Exact-Number)])(apply + L)))
+(make-poly-cplxfct [ec : Exact-Number]
+                   values + - e* e/ #:= =)
 
-(define (ecpoly->absolute-coefficients [P : ecpoly])
+(define (ecpoly->absolute-coefficients [P : ecPoly])
   (local-require "poly-flonum.rkt" math/flonum)
   (flpoly (for/vector : (Vectorof Flonum)
             ([v : Exact-Number (in-vector (ecpoly-v P))])(fl (magnitude v)))
           (ecpoly-degree P)))
 
 (module+ test
-  (ecpoly-const 3/8+i)
+  (define ecpoly> ecpoly/descending)
+  (ecpoly-constant 3/8+i)
   ecpoly-zero
   ecpoly-one
   (ecpoly-copy ecpoly-zero)
-  (ecpolyV< #[0 1 2 3/4 0])
+  (ecvector/ascending->poly #[0 1 2 3/4 0])
   (ecpoly> 5 4 3 2 1 0)
 
   (ecpoly+ (ecpoly> 5 4 3 2 1 0)

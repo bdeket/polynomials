@@ -8,6 +8,7 @@
 
 (module+ test
   (require typed/rackunit)
+  (define flpoly> flpoly/descending)
   (define (check-roots [A : (Listof Number)]
                        [B : (Listof Number)]
                        [ε : Flonum])
@@ -38,8 +39,8 @@
       'All
       '()))
 (module+ test
-  (check-equal? (0°root (flpoly> 1.0)) '())
-  (check-equal? (0°root (flpoly> 0.0)) 'All))
+  (check-equal? (0°root flpoly-one) '())
+  (check-equal? (0°root flpoly-zero) 'All))
 
 (define (1°root [P : flpoly]) : (Listof Flonum)
   (list (/ (- (flpoly-coefficient P 0))

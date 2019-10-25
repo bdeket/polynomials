@@ -10,18 +10,16 @@
 (define (fl-real [e : Flonum-Complex]) : Flonum (if (float-complex? e) (real-part e) e));<- Why is real-part Float-Complex not Flonum?
 (define (fl-imag [e : Flonum-Complex]) : Flonum (if (float-complex? e) (imag-part e) (fl 0)));<- Why is imag-part Float-Complex not Flonum?
 
-(make-poly-base fl Flonum
-                fl fl= fl+ fl- fl* fl/ flsum)
-(make-poly-realfct fl Flonum
-                   flpoly flpoly-v flpoly-degree flpoly*
-                   Flonum-Complex fl-real fl-imag make-rectangular
-                   fl fl= fl+ fl- fl* fl/
-                   flsum flabs)
+(make-poly-realfct [fl : Flonum]
+                   [make-rectangular : Flonum-Complex] fl-real fl-imag 
+                   fl fl+ fl- fl* fl/ flabs
+                   #:= fl=
+                   #:sum flsum)
 
 ;------------------------------------------------------------------------------------
 ;-  extra evaluators
 ;------------------------------------------------------------------------------------
-(define (flHorner+ [P : flpoly][t : Flonum]) : Flonum
+(define (flpoly-eval-accurate [P : flpoly][t : Flonum]) : Flonum
   (let loop ([i : Nonnegative-Integer 0]
              [x : Flonum 1.0]
              [ans : (Listof Flonum) '()])
@@ -30,7 +28,7 @@
       [else (loop (+ i 1) (* x t) (cons (* x (flpoly-coefficient P i)) ans))])))
 
 
-(define (hornerEFT [P : flpoly] [t : Flonum]) : (Values Flonum flpoly flpoly)
+(define (hornerEFT [P : flPoly] [t : Flonum]) : (Values Flonum flPoly flPoly)
   (define-values (ans pπ pσ)
     (for/fold : (Values Flonum (Listof Flonum) (Listof Flonum))
       ([ans : Flonum (flpoly-reverse-coefficient P 0)]
@@ -41,14 +39,14 @@
       (define-values (si σi)(fl+/error pi ai))
       (values si (cons πi pπ)(cons σi pσ))))
   (values ans
-          (flpolyL< pπ)
-          (flpolyL< pσ)))
-(define (hornerSum [P1 : flpoly] [P2 : flpoly] [t : Flonum]) : Flonum
+          (fllist/ascending->poly pπ)
+          (fllist/ascending->poly pσ)))
+(define (hornerSum [P1 : flPoly] [P2 : flPoly] [t : Flonum]) : Flonum
   (for/fold ([ans 0.0])
             ([ai ((inst in-vector Flonum) (flpoly-v P1) (flpoly-degree P1) -1 -1)]
              [bi ((inst in-vector Flonum) (flpoly-v P2) (flpoly-degree P2) -1 -1)])
     (fl+ (fl* ans t) (fl+ ai bi))))
-(define (compensatedflHorner [P : flpoly][t : Flonum]) : Flonum
+(define (flcompensatedHorner [P : flPoly][t : Flonum]) : Flonum
   (cond
     [(or (fl= t 0.0)(= (flpoly-degree P) 0))
      (flpoly-coefficient P 0)]
@@ -61,7 +59,7 @@
 ;------------------------------------------------------------------------------------
 ;calculates (flpoly*  (flpoly> 1.0 1.0)(flpoly> 1.0 1e-16)(flpoly> 1.0 1e-12)(flpoly> 1.0 1e-13)(flpoly> 1.0 1e-16))
 ;with less error creep, but around t² times slower than the next algorithm...
-(define (flpoly*-accurate [Pf : flpoly]. [Pr : flpoly *]) : flpoly
+(define (flpoly*-accurate [Pf : flpoly]. [Pr : flpoly *]) : flPoly
   (define N (+ (length Pr) 1))
   (define Ps (cons Pf Pr))
   (define d (apply + (map flpoly-degree Ps)))
@@ -94,15 +92,16 @@
     (for/vector : (Vectorof Flonum)
       ([i : Nonnegative-Integer (in-range (+ d 1))])
       (flsum (getcof Ps N i))))
-  (flpoly v d))
+  (flpoly-make v d))
 
 
 (module+ test
-  (flpoly-const (fl 3/8))
+  (define flpoly> flpoly/descending)
+  (flpoly-constant (fl 3/8))
   flpoly-zero
   flpoly-one
   (flpoly-copy flpoly-zero)
-  (flpolyV< (vector (fl 0) (fl 1) (fl 2) (fl 3/4) (fl 0)))
+  (flvector/ascending->poly (vector (fl 0) (fl 1) (fl 2) (fl 3/4) (fl 0)))
   (flpoly> (fl 5) (fl 4) (fl 3) (fl 2) (fl 1) (fl 0))
 
   (flpoly+ (flpoly> (fl 5) (fl 4) (fl 3) (fl 2) (fl 1) (fl 0))
