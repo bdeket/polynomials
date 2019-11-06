@@ -1,62 +1,11 @@
 #lang typed/racket/base
 
-(require racket/sequence
-         racket/vector
+(require racket/vector
          racket/list)
-(require (for-syntax typed/racket/base))
 (require "algebra.rkt"
-         "monomoid.rkt")
+         "monomoid.rkt"
+         "poly-dict.rkt")
 
-;***********************************************************************************************************************
-;* Poly-dict: mapping monomoid to coefficients                                                                         *
-;***********************************************************************************************************************
-(define-type p-dict (All (TheType) (case-> (Monomoid-Exponents -> TheType)
-                                           (      -> (Sequenceof Monomoid-Exponents TheType))
-                                           
-                                           ('get 'size -> Nonnegative-Integer)
-                                           ('get 'copy -> (p-dict TheType))
-                                           ('get 'list -> (Listof (List Monomoid-Exponents TheType)))
-                                           ('get Symbol -> Any)
-                                           ('set Monomoid-Exponents TheType -> (p-dict TheType)))))
-
-(: make-dense-dict (All (TheType) ((Vectorof TheType) TheType -> (p-dict TheType))))
-(define (make-dense-dict V zero)
-  (case-lambda
-    [(x) (define i (monomoid-first x))
-         (if (< -1 i (vector-length V)) (vector-ref V (monomoid-first x)) zero)]
-    [() (in-parallel ((inst sequence-map Monomoid-Exponents Nonnegative-Integer)
-                      (λ ([x : Nonnegative-Integer]) : Monomoid-Exponents (monomoid x))
-                      (in-naturals))
-                     (in-vector V))]
-    [(get x)
-     (case x
-       [(size)(vector-length V)]
-       [(copy)(make-dense-dict (vector-copy V) zero)]
-       [(list)(for/list : (Listof (List Monomoid-Exponents TheType))
-                ([i : Nonnegative-Integer (in-naturals)]
-                 [v (in-vector V)])
-                (list (monomoid i) v))])]
-    [(set i v)
-     (define V+ (vector-copy V))
-     (vector-set! V+ (monomoid-first i) v)
-     (make-dense-dict V+ zero)]))
-
-(: make-sparse-dict (All (TheType) ((HashTable Monomoid-Exponents TheType) TheType -> (p-dict TheType))))
-(define (make-sparse-dict H zero)
-  (case-lambda
-    [(x) (hash-ref H x (λ () zero))]
-    [() ((inst in-hash Monomoid-Exponents TheType) H)]
-    [(get x)
-     (case x
-       [(size)(hash-count H)]
-       [(copy)(make-sparse-dict (hash-copy H) zero)]
-       [(list)(for/list : (Listof (List Monomoid-Exponents TheType))
-                ([(k v)(in-hash H)])
-                (list k v))])]
-    [(set i v)
-     (define H+ (hash-copy H))
-     (hash-set! H+ i v)
-     (make-sparse-dict H+ zero)]))
 ;***********************************************************************************************************************
 ;* basic poly struct                                                                                                   *
 ;***********************************************************************************************************************
@@ -77,17 +26,17 @@
 (define (make-dense-poly cofs alg [var #f])
   (define degree0 (apply max ((inst map Nonnegative-Integer (List Monomoid-Exponents TheType))
                              (λ (x) (monomoid-first (car x))) cofs)))
-  (define V (make-vector (+ degree0 1) (algebra-Zero alg)))
+  (define V (make-vector (+ degree0 1) (algebra-zero alg)))
   (define degree : Nonnegative-Integer 0)
   (for* ([l (in-list cofs)]
          [i (in-value (monomoid-first (car l)))]
          [v (in-value (cadr l))]
-        #:when (or ((algebra-t= alg) (vector-ref V i) (algebra-Zero alg))
+        #:when (or ((algebra-t= alg) (vector-ref V i) (algebra-zero alg))
                    (raise-argument-error 'make-dense-poly "unique sets of exponents" cofs))
-        #:unless ((algebra-t= alg) v (algebra-Zero alg)))
+        #:unless ((algebra-t= alg) v (algebra-zero alg)))
     (when (< degree i) (set! degree i))
     (vector-set! V i v))
-  (define D ((inst make-dense-dict TheType) (vector-take V (+ degree 1)) (algebra-Zero alg)))
+  (define D ((inst make-dense-dict TheType) (vector-take V (+ degree 1)) (algebra-zero alg)))
   (poly D
         (or var (monomoid 'x))
         1
@@ -105,16 +54,16 @@
                                     (string->symbol (format "x_~a" i))))))
   (unless (and (if vars (= (monomoid-length vars*) vars-len) #t)
                (andmap (λ ([x : (List Monomoid-Exponents TheType)])(= (monomoid-length (car x)) vars-len)) cofs))
-    (raise-argument-error 'make-sparse-poly "All groups of variable-exponents musth have the same length" (list vars cofs)))
+    (raise-argument-error 'make-sparse-poly "All groups of variable-exponents must have the same length" (list vars cofs)))
   (define H : (HashTable Monomoid-Exponents TheType) (make-hash))
   (define degree : Nonnegative-Integer  0)
   (for ([l (in-list cofs)]
         #:when (or (not (hash-ref H (car l) #f))
                    (raise-argument-error 'make-sparse-poly "unique sets of exponents" cofs))
-        #:unless ((algebra-t= alg) (cadr l)(algebra-Zero alg)))
+        #:unless ((algebra-t= alg) (cadr l)(algebra-zero alg)))
     (let ([m (apply max (monomoid->list (car l)))])(when (< degree m)(set! degree m)))
     (hash-set! H (car l) (cadr l)))
-  (poly (make-sparse-dict H (algebra-Zero alg))
+  (poly (make-sparse-dict H (algebra-zero alg))
         vars*
         vars-len
         degree
@@ -128,8 +77,8 @@
   (cond
     [(empty? cofs*)
      (if (and vars (< 1 (monomoid-length vars)))
-         (make-sparse-poly (list (list (monomoid-base->zero-exponent vars) (algebra-Zero alg))) alg vars)
-         (make-dense-poly (list (list (monomoid 0) (algebra-Zero alg))) alg (or vars (monomoid 'x))))]
+         (make-sparse-poly (list (list (monomoid-base->zero-exponent vars) (algebra-zero alg))) alg vars)
+         (make-dense-poly (list (list (monomoid 0) (algebra-zero alg))) alg (or vars (monomoid 'x))))]
     [else
      (define cofs (if (list? (caar cofs*))
                       (map (λ ([x : (List (Listof Nonnegative-Integer) TheType)]) : (List Monomoid-Exponents TheType)
@@ -152,17 +101,25 @@
             (make-sparse-poly cofs alg vars)
             (make-dense-poly cofs alg vars))])]))
 
+(: make-const-poly (All (TheType) (->* [TheType (Algebra TheType)][(Option Monomoid-Base)](Poly TheType))))
+(define (make-const-poly cof alg [vars #f])
+  (make-poly (list (list (if vars
+                             (monomoid-base->zero-exponent vars)
+                             (monomoid 0))
+                         cof))
+             alg vars))
+
 (: poly->zero-poly (All (TheType)(-> (Poly TheType)(Poly TheType))))
 (define (poly->zero-poly P)
-  (make-poly (list (list (monomoid-base->zero-exponent (poly-vars P))(algebra-Zero (poly-algebra P))))
-             (poly-algebra P)
-             (poly-vars P)))
+  (make-const-poly (algebra-zero (poly-algebra P))
+                   (poly-algebra P)
+                   (poly-vars P)))
 
 (: poly->one-poly (All (TheType)(-> (Poly TheType)(Poly TheType))))
 (define (poly->one-poly P)
-  (make-poly (list (list (monomoid-base->zero-exponent (poly-vars P))(algebra-One (poly-algebra P))))
-             (poly-algebra P)
-             (poly-vars P)))
+  (make-const-poly (algebra-one (poly-algebra P))
+                   (poly-algebra P)
+                   (poly-vars P)))
 
 (: poly-remap (All (TheType)(-> (Poly TheType)(-> Monomoid-Exponents Monomoid-Exponents)(Option Monomoid-Base)(Poly TheType))))
 (define (poly-remap P remap vars)
@@ -190,8 +147,8 @@
 ;***********************************************************************************************************************
 (: poly->string (All (TheType) (-> (Poly TheType) String)))
 (define (poly->string P)
-  (define zero (algebra-Zero (poly-algebra P)))
-  (define one (algebra-One (poly-algebra P)))
+  (define zero (algebra-zero (poly-algebra P)))
+  (define one (algebra-one (poly-algebra P)))
   (define vars (poly-vars P))
   (define (make-term [v : TheType][k : Monomoid-Exponents]) : String
     (cond
@@ -221,7 +178,7 @@
          [(not (real? v)) (string-append " +"S)]
          [(<= 0 v) (string-append " +" S)]
          [else (string-append " " S)]))))
-  (if (string=? S "") (format "~a" (algebra-Zero (poly-algebra P))) S))
+  (if (string=? S "") (format "~a" (algebra-zero (poly-algebra P))) S))
 ;***********************************************************************************************************************
 ;* map over the poly-coefficients                                                                                      *
 ;***********************************************************************************************************************
@@ -250,9 +207,9 @@
                      (λ ([x : (Pair (Option Monomoid-Exponents)(Option Monomoid-Exponents))])
                        (cons (car x) k))
                      (λ () (cons #f #f))))
-     (define zeroA (algebra-Zero (poly-algebra PA)))
+     (define zeroA (algebra-zero (poly-algebra PA)))
      (define eA0 (apply monomoid (make-list (poly-vars-len PA) 0)))
-     (define zeroB (algebra-Zero (poly-algebra PB)))
+     (define zeroB (algebra-zero (poly-algebra PB)))
      (define eB0 (apply monomoid (make-list (poly-vars-len PB) 0)))
 
      (cond
@@ -330,10 +287,10 @@
 ;* multiplication                                                                                                      *
 ;***********************************************************************************************************************
 (: poly*k-v (All (TheType) (-> (Poly TheType) Monomoid-Exponents TheType (Poly TheType))))
-(define (poly*k-v P v s)
+(define (poly*k-v P k v)
   (define t* (algebra-t* (poly-algebra P)))
   (poly-map (λ ([a : (List Monomoid-Exponents TheType)])
-              (list (monomoid-exponents* (car a) v )(t* (cadr a) s)))
+              (list (monomoid-exponents* (car a) k )(t* (cadr a) v)))
             P #f #f #f))
 (: poly*p (All (TheType) (-> (Poly TheType) (Poly TheType) (Poly TheType))))
 (define (poly*p PA PB)
@@ -375,27 +332,31 @@
 ;***********************************************************************************************************************
 ;* substitute: results in a poly over algebra of B                                                                     *
 ;***********************************************************************************************************************
+(: exp-hash (All (A) (-> A A (-> A A A) (-> Nonnegative-Integer A))))
+(define (exp-hash H0 H1 fct*)
+  (define H : (HashTable Nonnegative-Integer A) (make-hash))
+  (hash-set! H 0 H0)
+  (hash-set! H 1 H1)
+  (: get-exp (-> Nonnegative-Integer A))
+  (define (get-exp e)
+    (cond
+      [(hash-ref H e #f)]
+      [(odd? e)
+       (define P* (fct* H1 (get-exp (- e 1))))
+       (hash-set! H e P*)
+       P*]
+      [else
+       (define n/2 (assert (/ e 2) integer?))
+       (define P* (fct* (get-exp n/2)(get-exp n/2)))
+       (hash-set! H e P*)
+       P*]))
+  get-exp)
 (: poly-substitute (All (TypeA TypeB) (-> (Poly TypeA) Symbol (Poly TypeB) (Poly TypeB))))
 (define (poly-substitute PA var PB)
   (define ->t (algebra-->t (poly-algebra PB)))
   (define-values (vars nr remapA remapB)(monomoid-substitute (poly-vars PA) var (poly-vars PB)))
   (define PB* (poly-remap PB remapB vars))
-  (define H : (HashTable Nonnegative-Integer (Poly TypeB)) (make-hash))
-  (hash-set! H 1 PB*)
-  (hash-set! H 0 (poly->one-poly PB*))
-  (: get-exp (-> Nonnegative-Integer (Poly TypeB)))
-  (define (get-exp e)
-    (cond
-      [(hash-ref H e #f)]
-      [(odd? e)
-       (define P* (poly*p PB* (get-exp (- e 1))))
-       (hash-set! H e P*)
-       P*]
-      [else
-       (define n/2 (assert (/ e 2) integer?))
-       (define P* (poly*p (get-exp n/2)(get-exp n/2)))
-       (hash-set! H e P*)
-       P*]))
+  (define get-exp (exp-hash (poly->one-poly PB*) PB* (inst poly*p TypeB)))
   (for/fold : (Poly TypeB)
     ([P (poly->zero-poly PB*)])
     ([(k v)(in-coefficients PA)])
@@ -403,6 +364,28 @@
     (poly+p P
             (poly*k-v (get-exp e)
                       (remapA k)(->t v)))))
+
+;***********************************************************************************************************************
+;* evaluate                                                                                                            *
+;***********************************************************************************************************************
+(: poly-evaluate (All (TheType) ((Poly TheType) TheType * -> TheType)))
+(define (poly-evaluate P . xs)
+  (unless (equal? (poly-vars-len P)(length xs))
+    (raise-argument-error 'poly-evaluate "Coefficients don't map" (list (poly-vars P) '-> xs)))
+  (define alg (poly-algebra P))
+  (define zero (algebra-zero alg))
+  (define t+ (algebra-t+ alg))
+  (define t* (algebra-t* alg))
+  (define exps (map (λ ([x : TheType])(exp-hash zero x t*)) xs))
+  (define (× [v1 : TheType][vs : Monomoid-Exponents]) : TheType
+    (for/fold ([S v1])
+              ([v : Nonnegative-Integer vs]
+               [e exps])
+      (t* S (e v))))
+  (for/fold : TheType
+    ([S zero])
+    ([(k v)(in-coefficients P)])
+    (t+ S (× v k))))
 
 
 ;***********************************************************************************************************************
@@ -431,7 +414,7 @@
   (printf "defining operations over ℂ\n")
   (define algebra-C
     ((inst make-algebra Number)
-     + - * / #:equal? =
+     + * - / #:equal? =
      #:->t (λ (x) (if (number? x) x
                       (error "C-algebra: don't know how to convert to number:" x)))))
   (printf "definining operations over Boolean\n...\n\n")
@@ -440,7 +423,7 @@
   (define (⊖ [x : Boolean][y : Boolean]) (xor x y))
   (define (⊗ [x : Boolean][y : Boolean]) (and x y))
   (define (⊘ [x : Boolean][y : Boolean]) (and x y))
-  (define algebra-Bool ((inst make-algebra Boolean) ⊕ ⊖ ⊗ ⊘ #:->t (λ (x) (cond [(or (equal? x #f)(and (number? x)(= x 0))) #f][else #t]))))
+  (define algebra-Bool ((inst make-algebra Boolean) ⊕ ⊗ ⊖ ⊘ #:->t (λ (x) (cond [(or (equal? x #f)(and (number? x)(= x 0))) #f][else #t]))))
 
   ;some shorthand
   (: Cpoly/ascending (->* [][#:base Symbol] #:rest Number (Poly Number)))
@@ -489,6 +472,8 @@
   (printf "P0+P1=~a\n" (poly->string (poly+ P0 P1)))
   (printf "P1*P2=~a\n" (poly->string (poly* P1 P2)))
   (printf "P3^2  =~a\n" (poly->string (poly-expt P3 2)))
+
+  (printf "P2(1.2 3i)=~a\n" (poly-evaluate P2 1.2 +3i))
 
   (printf "\nSubstitute y in P2 by the boolean polynomial bP1\n")
   (printf "(poly-substitute P2 'y bP1)=~a\n" (poly->string (poly-substitute P2 'y bP1)))
