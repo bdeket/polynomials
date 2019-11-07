@@ -38,7 +38,7 @@
     (vector-set! V i v))
   (define D ((inst make-dense-dict TheType) (vector-take V (+ degree 1)) (algebra-zero alg)))
   (poly D
-        (or var (monomoid 'x))
+        (or var monomoid-x)
         1
         degree
         alg))
@@ -49,9 +49,7 @@
                                         (Poly TheType))))
 (define (make-sparse-poly cofs alg [vars #f])
   (define vars-len (monomoid-length (caar cofs)))
-  (define vars* (or vars (list->monomoid (for/list : (Listof Symbol)
-                                    ([i (in-range vars-len)])
-                                    (string->symbol (format "x_~a" i))))))
+  (define vars* (or vars (make-monomoid-base vars-len)))
   (unless (and (if vars (= (monomoid-length vars*) vars-len) #t)
                (andmap (λ ([x : (List Monomoid-Exponents TheType)])(= (monomoid-length (car x)) vars-len)) cofs))
     (raise-argument-error 'make-sparse-poly "All groups of variable-exponents must have the same length" (list vars cofs)))
@@ -78,7 +76,7 @@
     [(empty? cofs*)
      (if (and vars (< 1 (monomoid-length vars)))
          (make-sparse-poly (list (list (monomoid-base->zero-exponent vars) (algebra-zero alg))) alg vars)
-         (make-dense-poly (list (list (monomoid 0) (algebra-zero alg))) alg (or vars (monomoid 'x))))]
+         (make-dense-poly (list (list monomoid-0 (algebra-zero alg))) alg (or vars monomoid-x)))]
     [else
      (define cofs (if (list? (caar cofs*))
                       (map (λ ([x : (List (Listof Nonnegative-Integer) TheType)]) : (List Monomoid-Exponents TheType)
@@ -97,15 +95,15 @@
             ([l : (List Monomoid-Exponents TheType) (in-list cofs)]
              [k (in-value (car l))])
             (values (max deg (monomoid-first k)) (+ len 1))))
-        (if (< (/ deg len) 8/10)
-            (make-sparse-poly cofs alg vars)
-            (make-dense-poly cofs alg vars))])]))
+        (if (or (= deg 0)(< (/ len deg) 8/10))
+            (make-sparse-poly cofs alg (or vars monomoid-x))
+            (make-dense-poly cofs alg (or vars monomoid-x)))])]))
 
 (: make-const-poly (All (TheType) (->* [TheType (Algebra TheType)][(Option Monomoid-Base)](Poly TheType))))
 (define (make-const-poly cof alg [vars #f])
   (make-poly (list (list (if vars
                              (monomoid-base->zero-exponent vars)
-                             (monomoid 0))
+                             monomoid-0)
                          cof))
              alg vars))
 
@@ -208,9 +206,9 @@
                        (cons (car x) k))
                      (λ () (cons #f #f))))
      (define zeroA (algebra-zero (poly-algebra PA)))
-     (define eA0 (apply monomoid (make-list (poly-vars-len PA) 0)))
+     (define eA0 (monomoid-base->zero-exponent (poly-vars PA)))
      (define zeroB (algebra-zero (poly-algebra PB)))
-     (define eB0 (apply monomoid (make-list (poly-vars-len PB) 0)))
+     (define eB0 (monomoid-base->zero-exponent (poly-vars PB)))
 
      (cond
        [alg
@@ -328,6 +326,33 @@
      (define n/2 (assert (/ e 2) integer?))
      (define P^2 (poly* P P))
      (poly-expt P^2 n/2)]))
+
+;***********************************************************************************************************************
+;* division                                                                                                            *
+;***********************************************************************************************************************
+;TODO switch from long division to synthetic division
+(: poly-quotient/remainder (All (TheType) (-> (Poly TheType) (Poly TheType) (Values (Poly TheType) (Poly TheType)))))
+(define (poly-quotient/remainder PA PB)
+  (unless (= 1 (poly-vars-len PA)(poly-vars-len PB))
+    (error "poly-quotient/remainder: not (yet) implemented for multivariable polynomials"
+           (poly-vars PA) (poly-vars PB)))
+  (cond
+    [(equal? (poly-vars PA)(poly-vars PB))
+     (define d (poly-degree PB))
+     (define b_n (poly-coefficient PB (monomoid d)))
+     (define t/ (algebra-t/ (poly-algebra PB)))
+     (let loop ([Q (poly->zero-poly PB)]
+                [R PA])
+       (define dR (poly-degree R))
+       (define d* (- dR d))
+       (cond
+         [(< d* 0)(values Q R)]
+         [else
+          (define rn (t/ (poly-coefficient R (monomoid dR)) b_n))
+          (loop (poly-set Q (monomoid d*) rn)
+                (poly- R (poly*k-v PB (monomoid d*) rn)))]))]
+    [else (values (poly->zero-poly PB)
+                  PA)]))
 
 ;***********************************************************************************************************************
 ;* substitute: results in a poly over algebra of B                                                                     *
@@ -479,4 +504,34 @@
   (printf "(poly-substitute P2 'y bP1)=~a\n" (poly->string (poly-substitute P2 'y bP1)))
 
   (printf "(the other way around would not work, since the operations over ℂ don't\n  know how to convert a Boolean to a Number\n  Notice that ->Bool is taking any value other than 0 or #f as #t)\n")
-  )
+
+
+  (define S1
+    (make-poly '(((5) 1)((0) 1))
+               C-algebra))
+  (poly->string S1)
+  (define S2
+    (make-poly '(((1) 1)((0) -1))
+               C-algebra))
+  (poly->string S2)
+  (define-values (Q R)
+    (poly-quotient/remainder S1 S2))
+  (poly->string Q)
+  (poly->string R)
+  (define S3 (poly+ R (poly* Q S2)))
+  (poly->string S3)
+  (define S4
+    (make-poly '(((1) 1)((0) 1))
+               C-algebra))
+  (define-values (Q2 R2)
+    (poly-quotient/remainder S1 S4))
+  (poly->string Q2)
+  (poly->string R2)
+  (define S5
+    (make-poly '(((1) 4)((2) 3))
+               algebra-C))
+  (define-values (Q3 R3)
+    (poly-quotient/remainder S1 S5))
+  (poly->string Q3)
+  (poly->string R3)
+  (poly->string (poly+ R3 (poly* Q3 S5))))

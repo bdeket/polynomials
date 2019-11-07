@@ -1,6 +1,29 @@
 #lang typed/racket/base
 
-(require (only-in racket/unsafe/ops unsafe-struct-ref))
+#| TODO:
+¿rename to field, this is (I think) closer to what this structure captures...?
+
+expectations: (to be written in the doc.)
+
+addition is assosiative: -> if not: everything is evaluated left to right
+zero is neutral for addition: -> if not: zero is added to poly+, poly* and a few others
+addition is commutative: -> if not: no order is guaranteed in the poly coefficients,
+                                    especially for sparse coefficients, the complete order
+                                    can change with just one extra term added
+
+multiplication is assosiative: -> if not: exponents are not calculated the right way
+                                          everything is evaluated left to right
+multiplication is distributive w.r.t. addition: if not: poly-scale, poly* and poly-substitute are wrong
+multiplication is commutative: -> if not: multiplication and substitution are not calculated the right way
+                                         (a x y)*(b z x) => (a b x² y z) instead of (a x y b z x)
+                                         ie: coefficients are grouped together in order and variables are sorted based on first appearance
+                                         if I understand it right, this means implementation is ok for poly structures, but not for poly functions
+
+- and / are defined functions: if not poly- and (poly/s & poly/p-QR) respectively will not work
+
+
+
+|#
 
 (provide make-algebra
          C-algebra
@@ -53,7 +76,7 @@
       [i->t (values (λ (x)
                       (cond
                         [(exact-integer? x) (i->t x)]
-                        [else (raise-argument-error 'algebra "Unable to convert to thetype" x)]))
+                        [else (error (format "algebra->t: Unable to convert ~a to TheType of the algebra" x))]))
                     (or zero (i->t 0))(or one (i->t 1)))]
       [(and zero one)
        (values (λ (x)

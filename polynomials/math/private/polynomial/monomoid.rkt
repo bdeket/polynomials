@@ -2,7 +2,7 @@
 
 (require racket/list)
 
-(provide (all-defined-out))
+(provide (except-out (all-defined-out) checked-list->monomoid))
 ;***********************************************************************************************************************
 ;* Monomoid                                                                                                            *
 ;***********************************************************************************************************************
@@ -10,11 +10,26 @@
 (define-type Monomoid-Base (Vectorof Symbol))
 (: monomoid (case-> (->* () #:rest Nonnegative-Integer Monomoid-Exponents)
              (->* () #:rest Symbol Monomoid-Base)))
-(define (monomoid . x) (list->vector x))
+(define (monomoid . x)
+  (cond
+    [(empty? x)(raise-argument-error 'monomoid "At least one element" x)]
+    [(and (symbol? (car x))(check-duplicates x))
+     (raise-argument-error 'monomoid "Unique symbols for a base" x)]
+    [else (list->vector x)]))
 (define (monomoid-base->zero-exponent [b : Monomoid-Base]): Monomoid-Exponents (make-vector (monomoid-length b) 0))
+(define monomoid-x (monomoid 'x))
+(define monomoid-0 (monomoid 0))
+(define (make-monomoid-base [i : Nonnegative-Integer]) : Monomoid-Base
+  (for/vector : Monomoid-Base
+    ([i (in-range i)])
+    (string->symbol (format "x_~a" i))))
+
 
 (: list->monomoid (case-> (-> (Listof Nonnegative-Integer) Monomoid-Exponents)(-> (Listof Symbol) Monomoid-Base)))
-(define (list->monomoid l) (list->vector l))
+(define (list->monomoid l) (apply monomoid l))
+
+(: checked-list->monomoid (case-> (-> (Listof Nonnegative-Integer) Monomoid-Exponents)(-> (Listof Symbol) Monomoid-Base)))
+(define (checked-list->monomoid l) (list->vector l))
 
 (: monomoid->list (case-> (-> Monomoid-Exponents (Listof Nonnegative-Integer))(-> Monomoid-Base (Listof Symbol))))
 (define (monomoid->list v) (vector->list v))
@@ -36,14 +51,14 @@
   : (Values Monomoid-Base
             (-> Monomoid-Exponents Monomoid-Exponents)
             (-> Monomoid-Exponents Monomoid-Exponents))
-  (define vars (list->monomoid (remove-duplicates (append (monomoid->list b1)(monomoid->list b2)))))
+  (define vars (checked-list->monomoid (remove-duplicates (append (monomoid->list b1)(monomoid->list b2)))))
   (define vars-len (monomoid-length vars))
   (define dif (make-list (- vars-len (monomoid-length b1)) 0))
   (define k-map : (HashTable Symbol Nonnegative-Integer)(make-hash))
   (for ([x vars])(cond [(monomoid-has? b2 x) => (λ (i) (hash-set! k-map x i))]))
-  (define (remap1 [k : Monomoid-Exponents])(list->monomoid (append (monomoid->list k) dif)))
+  (define (remap1 [k : Monomoid-Exponents])(checked-list->monomoid (append (monomoid->list k) dif)))
   (define (remap2 [k : Monomoid-Exponents]) : Monomoid-Exponents
-    (list->monomoid (for/list : (Listof Nonnegative-Integer)
+    (checked-list->monomoid (for/list : (Listof Nonnegative-Integer)
                ([x vars])
                (cond [(hash-ref k-map x #f) => (λ (i) (monomoid-ref k i))]
                      [else 0]))))
@@ -58,10 +73,10 @@
   (cond
     [nr
      (define-values (a b)(split-at (monomoid->list b1) nr))
-     (define b1* (list->monomoid (append a (cdr b))))
+     (define b1* (checked-list->monomoid (append a (cdr b))))
      (define (remove [e1 : Monomoid-Exponents]) : Monomoid-Exponents
        (define-values (a b)(split-at (monomoid->list e1) nr))
-       (list->monomoid (append a (cdr b))))
+       (checked-list->monomoid (append a (cdr b))))
      (define-values (vars rebase1 rebase2)(monomoid-combine b1* b2))
      (values vars
              nr
